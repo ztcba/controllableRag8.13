@@ -11,14 +11,18 @@ class Settings(BaseSettings):
     # The model_config tells pydantic to load variables from a .env file
     model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8', extra='ignore')
 
-    openai_api_key: str = Field(..., alias='OPENAI_API_KEY')
+    openai_api_key: str | None = Field(None, alias='OPENAI_API_KEY')
     # groq_api_key: str | None = Field(None, alias='GROQ_API_KEY') # Uncomment if you use it
     pydevd_warn_evaluation_timeout: int = 100000
 
     # 2. Model Configuration
     # We can define different models and easily switch between them
-    default_model: str = "gpt-4o"
+    default_model: str = "gpt-3.5-turbo"
     # large_model: str = "llama3-70b-8192" # Example for Groq
+    
+    # LLM Provider Configuration
+    llm_provider: str = "xiaocaseai"  # Can be "openai", "xiaocaseai", or other providers
+    llm_base_url: str = "https://api.xiaocaseai.com/v1"  # Base URL for the LLM API
 
     # 3. Vector Store Paths
     # Centralizing paths makes them easy to change
