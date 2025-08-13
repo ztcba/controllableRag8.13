@@ -1,12 +1,12 @@
 # 这是整个应用的顶层组装逻辑。将其放在一个单独的文件中，可以让我们清晰地看到整个 Plan-and-Execute 流程的宏观结构，而不被节点的具体实现细节所干扰。
 # create_agent 函数
 
-# src/rag_pipeline/graph/agent.py
+# rag_pipeline/graph/agent.py
 from langgraph.graph import END, StateGraph
 
 # Import the main state and all the nodes/conditions
-from src.rag_pipeline.graph import state
-from src.rag_pipeline.graph import nodes
+from rag_pipeline.graph import state
+from rag_pipeline.graph import nodes
 
 def create_agent():
     """
@@ -54,14 +54,14 @@ def create_agent():
     agent_workflow.add_edge("retrieve_book_quotes", "replan")
     agent_workflow.add_edge("answer", "replan")
 
-    agent_workflow.add_conditional_edges(
-        "replan",
-        nodes.can_be_answered,
-        {
-            "can_be_answered_already": "get_final_answer",
-            "cannot_be_answered_yet": "task_handler" # Modified to go back to task_handler with the new plan
-        }
-    )
+    # agent_workflow.add_conditional_edges(
+    #     "replan",
+    #     nodes.can_be_answered,
+    #     {
+    #         "can_be_answered_already": "get_final_answer",
+    #         "cannot_be_answered_yet": "task_handler" # Modified to go back to task_handler with the new plan
+    #     }
+    # )
     # In the original code, it went back to "break_down_plan". 
     # Going to "task_handler" seems more direct since the replanned steps should already be actionable.
     # Let's stick to the original logic for now to be safe.

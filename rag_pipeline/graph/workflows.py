@@ -1,12 +1,12 @@
 # 创建可复用子图（如 create_qualitative_retrieval_..._workflow_app）的逻辑
-# 迁移到 src/rag_pipeline/graph/workflows.py
+# 迁移到 rag_pipeline/graph/workflows.py
 
-# src/rag_pipeline/graph/workflows.py
+# rag_pipeline/graph/workflows.py
 from langgraph.graph import END, StateGraph
 
 # Import the state and nodes required for these workflows
-from src.rag_pipeline.graph import state
-from src.rag_pipeline.graph import nodes
+from rag_pipeline.graph import state
+from rag_pipeline.graph import nodes
 
 # --- Qualitative Retrieval Workflows ---
 

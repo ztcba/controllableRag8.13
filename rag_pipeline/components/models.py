@@ -1,7 +1,8 @@
 # 逐一找到 functions_for_pipeline.py 中所有的 pydantic.BaseModel 子类，
 # 剪切 它们的定义，然后 粘贴 到 src/rag_pipeline/components/models.py 文件中
-# src/rag_pipeline/components/models.py
-from langchain_core.pydantic_v1 import BaseModel, Field
+# rag_pipeline/components/models.py
+# from langchain_core.pydantic_v1 import BaseModel, Field
+from pydantic import BaseModel, Field
 from typing import List, Dict
 
 class KeepRelevantContent(BaseModel):
@@ -48,7 +49,7 @@ class AnonymizeQuestion(BaseModel):
 
 class DeAnonymizePlan(BaseModel):
     """Possible results of the action."""
-    plan: List = Field(description="Plan to follow in future. with all the variables replaced with the mapped words.") # 保持 List 不变
+    plan: List[str] = Field(description="Plan to follow in future. with all the variables replaced with the mapped words.") # 保持 List 不变
 
 class CanBeAnsweredAlready(BaseModel):
     """Possible results of the action."""

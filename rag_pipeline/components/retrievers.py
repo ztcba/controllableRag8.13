@@ -4,7 +4,7 @@
 # src/rag_pipeline/components/retrievers.py
 from langchain_openai import OpenAIEmbeddings
 from langchain.vectorstores import FAISS
-from src.rag_pipeline.settings import settings
+from rag_pipeline.settings import settings
 
 def create_retrievers():
     """

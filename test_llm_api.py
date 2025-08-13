@@ -6,16 +6,16 @@ Test script to verify that LLM configuration works and can actually call the LLM
 import sys
 from pathlib import Path
 
-# Add src to Python path so we can import from our modules
-src_path = Path(__file__).parent / "src"
-sys.path.insert(0, str(src_path))
+# Add project root to Python path so we can import from our modules
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root))
 
 print("Testing LLM API calls...")
 
 # Test 1: Load settings
 print("\n1. Loading settings...")
 try:
-    from src.rag_pipeline.settings import settings
+    from rag_pipeline.settings import settings
     print("   ✓ Settings loaded successfully")
     print(f"   Default model: {settings.default_model}")
     print(f"   LLM provider: {settings.llm_provider}")
@@ -27,7 +27,7 @@ except Exception as e:
 # Test 2: Instantiate models
 print("\n2. Testing model instantiation...")
 try:
-    from src.rag_pipeline.components.llms import get_chat_model, get_planner_model
+    from rag_pipeline.components.llms import get_chat_model, get_planner_model
     
     # Test chat model
     print("   Testing get_chat_model...")

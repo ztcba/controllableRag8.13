@@ -1,4 +1,4 @@
-# src/rag_pipeline/components/prompts.py
+# rag_pipeline/components/prompts.py
 
 keep_only_relevant_content_prompt_template = """you receive a query: {query} and retrieved docuemnts: {retrieved_documents} from a
 vector store.

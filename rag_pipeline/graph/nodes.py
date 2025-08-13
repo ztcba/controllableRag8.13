@@ -6,26 +6,27 @@
 # 清晰的 State: 每个节点函数的 state 参数都应该用我们之前在 state.py 中定义的相应 TypedDict 进行类型注解，这能极大地提高代码的可读性和健壮性。
 # 我们将把 创建链的实例 和 调用链 的逻辑都放在节点函数内部。
 
-# src/rag_pipeline/graph/nodes.py
+# rag_pipeline/graph/nodes.py
 from pprint import pprint
 
 # LangChain/LangGraph imports
 # (We might not need these directly in nodes.py, but it's good practice to have them if needed)
 
 # Local application imports
-from src.rag_pipeline.components import chains
-from src.rag_pipeline.components.retrievers import (
+from rag_pipeline.components import chains
+from rag_pipeline.components.retrievers import (
     chunks_query_retriever,
     chapter_summaries_query_retriever,
     book_quotes_query_retriever,
+    # check_vector_stores_exist
 )
-from src.rag_pipeline.graph import state  # Import the state definitions
-from src.rag_pipeline.utils.helpers import escape_quotes, text_wrap
+from rag_pipeline.graph import state  # Import the state definitions
+from rag_pipeline.utils.helpers import escape_quotes, text_wrap
 
 # We will also need to import the compiled sub-workflows later.
 # For now, we define the nodes that will be part of them.
 # We'll import the compiled apps inside the nodes that run them.
-from src.rag_pipeline.graph import workflows
+# from rag_pipeline.graph import workflows 这行代码让 nodes.py 依赖了 workflows.py，从而形成了循环。而 nodes.py 文件中的节点函数本身其实并不需要直接导入 workflows 模块。
 
 # 注意：检查循环导入: 请注意，nodes.py 中的 run_*_workflow 函数会从 workflows.py 导入 ..._app。而 workflows.py 会从 nodes.py 导入节点。这会造成循环导入！
 # 解决方案: 将 from src.rag_pipeline.graph.workflows import ..._app 这几行导入语句移动到需要它们的函数内部，而不是放在文件顶部。这是一种延迟导入，可以有效避免循环依赖问题。
@@ -39,6 +40,12 @@ def retrieve_chunks_context_per_question(state: state.QualitativeRetrievalGraphS
     """
     print("Retrieving relevant chunks...")
     question = state["question"]
+    
+    # Check if vector stores exist before attempting to retrieve
+    # if not check_vector_stores_exist():
+    #     print("Warning: Vector stores not found. Skipping retrieval.")
+    #     return {"context": "", "question": question}
+    
     docs = chunks_query_retriever.get_relevant_documents(question)
     context = " ".join(doc.page_content for doc in docs)
     context = escape_quotes(context)
@@ -51,6 +58,12 @@ def retrieve_summaries_context_per_question(state: state.QualitativeRetrievalGra
     """
     print("Retrieving relevant chapter summaries...")
     question = state["question"]
+    
+    # Check if vector stores exist before attempting to retrieve
+    # if not check_vector_stores_exist():
+    #     print("Warning: Vector stores not found. Skipping retrieval.")
+    #     return {"context": "", "question": question}
+    
     docs_summaries = chapter_summaries_query_retriever.get_relevant_documents(question)
     context_summaries = " ".join(
         f"{doc.page_content} (Chapter {doc.metadata['chapter']})" for doc in docs_summaries
@@ -65,6 +78,12 @@ def retrieve_book_quotes_context_per_question(state: state.QualitativeRetrievalG
     """
     print("Retrieving relevant book quotes...")
     question = state["question"]
+    
+    # Check if vector stores exist before attempting to retrieve
+    # if not check_vector_stores_exist():
+    #     print("Warning: Vector stores not found. Skipping retrieval.")
+    #     return {"context": "", "question": question}
+    
     docs_book_quotes = book_quotes_query_retriever.get_relevant_documents(question)
     book_qoutes = " ".join(doc.page_content for doc in docs_book_quotes)
     book_qoutes_context = escape_quotes(book_qoutes)
@@ -198,7 +217,16 @@ def plan_step(state: state.PlanExecute):
     planner_chain = chains.create_plan_chain()
     
     plan_output = planner_chain.invoke({"question": state['anonymized_question']})
-    state["plan"] = plan_output.steps
+    
+    # 添加错误检查，确保plan_output不是None
+    if plan_output is None:
+        print("Warning: Planner returned None. Using empty plan.")
+        state["plan"] = []
+    elif not hasattr(plan_output, 'steps'):
+        print(f"Warning: Planner returned unexpected output: {plan_output}. Using empty plan.")
+        state["plan"] = []
+    else:
+        state["plan"] = plan_output.steps
     
     print(f'plan: {state["plan"]}')
     return state
@@ -324,7 +352,7 @@ def run_qualitative_chunks_retrieval_workflow(state: state.PlanExecute):
     print("Running the qualitative chunks retrieval workflow...")
     
     # We will compile the workflow app in workflows.py and import it
-    from src.rag_pipeline.graph.workflows import qualitative_chunks_retrieval_workflow_app
+    from rag_pipeline.graph.workflows import qualitative_chunks_retrieval_workflow_app
     
     question = state["query_to_retrieve_or_answer"]
     inputs = {"question": question, "context": "", "relevant_context": ""}
@@ -341,7 +369,7 @@ def run_qualitative_chunks_retrieval_workflow(state: state.PlanExecute):
 def run_qualitative_summaries_retrieval_workflow(state: state.PlanExecute):
     state["curr_state"] = "retrieve_summaries"
     print("Running the qualitative summaries retrieval workflow...")
-    from src.rag_pipeline.graph.workflows import qualitative_summaries_retrieval_workflow_app
+    from rag_pipeline.graph.workflows import qualitative_summaries_retrieval_workflow_app
     question = state["query_to_retrieve_or_answer"]
     inputs = {"question": question, "context": "", "relevant_context": ""}
     sub_workflow_output = qualitative_summaries_retrieval_workflow_app.invoke(inputs)
@@ -353,7 +381,7 @@ def run_qualitative_summaries_retrieval_workflow(state: state.PlanExecute):
 def run_qualitative_book_quotes_retrieval_workflow(state: state.PlanExecute):
     state["curr_state"] = "retrieve_book_quotes"
     print("Running the qualitative book quotes retrieval workflow...")
-    from src.rag_pipeline.graph.workflows import qualitative_book_quotes_retrieval_workflow_app
+    from rag_pipeline.graph.workflows import qualitative_book_quotes_retrieval_workflow_app
     question = state["query_to_retrieve_or_answer"]
     inputs = {"question": question, "context": "", "relevant_context": ""}
     sub_workflow_output = qualitative_book_quotes_retrieval_workflow_app.invoke(inputs)
@@ -368,7 +396,7 @@ def run_qualtative_answer_workflow(state: state.PlanExecute):
     """
     state["curr_state"] = "answer"
     print("Running the qualitative answer workflow...")
-    from src.rag_pipeline.graph.workflows import qualitative_answer_workflow_app
+    from rag_pipeline.graph.workflows import qualitative_answer_workflow_app
     
     question = state["query_to_retrieve_or_answer"]
     context = state["curr_context"]
@@ -442,7 +470,7 @@ def run_qualtative_answer_workflow_for_final_answer(state: state.PlanExecute):
     """
     state["curr_state"] = "get_final_answer"
     print("Running the qualitative answer workflow for final answer...")
-    from src.rag_pipeline.graph.workflows import qualitative_answer_workflow_app
+    from rag_pipeline.graph.workflows import qualitative_answer_workflow_app
     
     question = state["question"]
     context = state["aggregated_context"]

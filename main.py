@@ -2,8 +2,8 @@
 # main.py
 import uuid
 from pprint import pprint
-from src.rag_pipeline.graph.agent import create_agent
-from src.rag_pipeline.utils.helpers import text_wrap
+from rag_pipeline.graph.agent import create_agent
+from rag_pipeline.utils.helpers import text_wrap
 
 def run_agent():
     """
