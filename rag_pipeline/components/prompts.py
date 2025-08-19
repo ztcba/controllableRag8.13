@@ -89,6 +89,18 @@ you need to go through the plan refine it according to this:
 
 output the refined plan
 """
+# 你会收到一份规划{plan}，其中包含为回答某个查询而需依次执行的一系列步骤。  
+#请你逐一审阅该规划，并按以下要求对其进行优化：
+#1. 每一步都必须能够通过以下方式之一执行：
+    #i. 从书籍文本块的向量数据库中检索相关信息
+    #ii. 从章节摘要的向量数据库中检索相关信息
+    #iii. 从书籍引用内容的向量数据库中检索相关信息
+    #iv. 根据给定上下文回答问题
+#2. 每一步都应包含执行该步骤所需的全部信息。
+
+#请输出优化后的规划。
+# 它接收一个已有的计划，并要求将其中的每一步分解为更小的、可由工具直接执行的子任务，
+# 强调这些子任务应该是“可检索的”或“可回答的”。
 
 replanner_prompt_template =""" For the given objective, come up with a simple step by step plan of how to figure out the answer. 
     This plan should involve individual tasks, that if executed correctly will yield the correct answer. Do not add any superfluous steps. 
@@ -135,6 +147,15 @@ tasks_handler_prompt_template = """You are a task handler that receives a task {
     if you decide to use Tool D, output the question to be used for the tool, the context, and also that the tool to be used is Tool D.
 
     """
+# 上面是工具使用说明
+ #你还会收到上一次使用的工具 {last_tool}。
+# 如果 {last_tool} 是 retrieve_chunks（文本块检索），则使用工具 A 以外的其他工具。
+
+# 你也可以利用已执行步骤 {past_steps} 来辅助决策和理解任务背景。
+ #你还可以参考初始用户问题 {question} 来辅助决策和理解任务背景。
+
+# 如果你决定使用工具 A、B 或 C，需输出该工具要使用的查询词以及对应的工具。
+# 如果你决定使用工具 D，需输出该工具要处理的问题、相关上下文，以及说明使用的是工具 D。
 
 anonymize_question_prompt_template = """ You are a question anonymizer. The input You receive is a string containing several words that
     construct a question {question}. Your goal is to changes all name entities in the input to variables, and remember the mapping of the original name entities to the variables.

@@ -26,20 +26,21 @@ class PlanExecute(TypedDict):
     Represents the state of the main agent graph.
     """
     # Original input
-    question: str
+    question: str            # 原始问题
 
     # Planner state
-    anonymized_question: str
-    mapping: Dict
-    plan: List[str]
-    past_steps: List[str]
+    anonymized_question: str # 匿名化后的问题
+    mapping: Dict            # 匿名化映射
+    plan: List[str]          # 任务计划列表
+    past_steps: List[str]    # 已完成的任务步骤
     
     # Execution state
-    curr_state: str # To track current node for debugging
-    query_to_retrieve_or_answer: str
-    curr_context: str
-    aggregated_context: str
-    tool: str
+    curr_state: str          # 当前节点状态，用于调试和追踪
+    query_to_retrieve_or_answer: str # 传递给工具的具体查询
+    curr_context: str        # 如果是问答工具，这里是当前上下文
+    aggregated_context: str  # 所有工具执行后聚合的上下文
+    tool: str                # 决定使用的工具名称
     
     # Final output
-    response: str
+    response: str            # 最终的答案
+    
