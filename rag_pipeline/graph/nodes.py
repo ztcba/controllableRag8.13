@@ -6,8 +6,11 @@ from langchain_core.documents import Document
 # Local application imports
 from rag_pipeline.components import chains
 from rag_pipeline.components.retrievers import (
-    chunks_query_retriever,
-    # ... other retrievers if needed ...
+    document_retriever,
+    # 为了向后兼容，也可以使用原来的名称
+    # chunks_query_retriever, 
+    # chapter_summaries_query_retriever, 
+    # book_quotes_query_retriever
 )
 from rag_pipeline.graph.state import (
     MainGraphState, 
@@ -63,7 +66,7 @@ def retrieve_documents(state: FactualSubGraphState):
     print("---RETRIEVING DOCUMENTS---")
     
     query_to_use = state.get("enhanced_question") or state["question"]
-    retriever = chunks_query_retriever 
+    retriever = document_retriever 
     documents = retriever.get_relevant_documents(query_to_use)
     
     print(f"---RETRIEVED {len(documents)} DOCUMENTS---")

@@ -42,36 +42,28 @@ class Settings(BaseSettings):
     llm_provider: str = Field(..., alias='LLM_PROVIDER')
     llm_base_url: str = Field(..., alias='LLM_BASE_URL')
 
-    # 3. Vector Store Paths - 新设计：只使用一个向量数据库
-    # 统一的向量数据库路径，用于存储中国博士后科学基金资助指南的所有内容
-    vector_store_path_str: str = Field("vector_stores/funding_guide_vectorstore", alias='VECTOR_STORE_PATH')
-    
-    # === 原来的三个向量数据库配置（已注释） ===
-    # chunks_vector_store_path_str: str = Field("vector_stores/chunks_vector_store", alias='CHUNKS_VECTOR_STORE_PATH')
-    # chapter_summaries_vector_store_path_str: str = Field("vector_stores/chapter_summaries_vector_store", alias='CHAPTER_SUMMARIES_VECTOR_STORE_PATH')
-    # book_quotes_vectorstore_path_str: str = Field("vector_stores/book_quotes_vectorstore", alias='BOOK_QUOTES_VECTORSTORE_PATH')
+    # 3. Vector Store Paths (使用Path对象，更加健壮)
+    # 我们让它从字符串加载，然后通过property转换为相对于项目根目录的绝对路径
+    chunks_vector_store_path_str: str = Field("vector_stores/chunks_vector_store", alias='CHUNKS_VECTOR_STORE_PATH')
+    chapter_summaries_vector_store_path_str: str = Field("vector_stores/chapter_summaries_vector_store", alias='CHAPTER_SUMMARIES_VECTOR_STORE_PATH')
+    book_quotes_vectorstore_path_str: str = Field("vector_stores/book_quotes_vectorstore", alias='BOOK_QUOTES_VECTORSTORE_PATH')
     
     # 4. Other LLM parameters
     default_temperature: float = 0.0
     default_max_tokens: int = 50000
     
-    # 5. 动态计算向量存储的绝对路径 - 新设计：只有一个向量数据库
+    # 5. [新增] 动态计算向量存储的绝对路径
     @property
-    def vector_store_path(self) -> Path:
-        return PROJECT_ROOT / self.vector_store_path_str
-    
-    # === 原来的三个向量数据库路径属性（已注释） ===
-    # @property
-    # def chunks_vector_store_path(self) -> Path:
-    #     return PROJECT_ROOT / self.chunks_vector_store_path_str
+    def chunks_vector_store_path(self) -> Path:
+        return PROJECT_ROOT / self.chunks_vector_store_path_str
 
-    # @property
-    # def chapter_summaries_vector_store_path(self) -> Path:
-    #     return PROJECT_ROOT / self.chapter_summaries_vector_store_path_str
+    @property
+    def chapter_summaries_vector_store_path(self) -> Path:
+        return PROJECT_ROOT / self.chapter_summaries_vector_store_path_str
 
-    # @property
-    # def book_quotes_vectorstore_path(self) -> Path:
-    #     return PROJECT_ROOT / self.book_quotes_vectorstore_path_str
+    @property
+    def book_quotes_vectorstore_path(self) -> Path:
+        return PROJECT_ROOT / self.book_quotes_vectorstore_path_str
 
 
 # Create a single, importable instance of the settings
@@ -88,6 +80,6 @@ os.environ["PYDEVD_WARN_EVALUATION_TIMEOUT"] = str(settings.pydevd_warn_evaluati
 
 # Now you can use the settings in your project like this:
 # from rag_pipeline.settings import settings
-# my_vector_store_path = settings.vector_store_path
+# my_vector_store_path = settings.chunks_vector_store_path
 # print(my_vector_store_path) 
-# # Output would be C:\GitProject\controllable-rag\vector_stores\funding_guide_vectorstore (Path object)
+# # Output would be C:\GitProject\controllable-rag\vector_stores\chunks_vector_store (Path object)

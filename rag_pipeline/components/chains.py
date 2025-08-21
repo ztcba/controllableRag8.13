@@ -4,7 +4,7 @@
 # 所有名为 create_..._chain 的函数
 # rag_pipeline/components/chains.py
 
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 
 # Import from our new modules

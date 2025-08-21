@@ -95,7 +95,8 @@ class VectorRetriever(BaseRetriever):
         try:
             self.embeddings = OpenAIEmbeddings(
                 model=self.config.embedding_model,
-                openai_api_key=settings.openai_api_key
+                openai_api_key=settings.openai_api_key,
+                openai_api_base=settings.llm_base_url  # 使用配置的API基础URL
             )
             
             self.vector_store = FAISS.load_local(
@@ -216,7 +217,10 @@ class LLMReranker:
     
     def __init__(self, model: str = "gpt-4o-mini"):
         self.model = model
-        self.openai_client = OpenAI(api_key=settings.openai_api_key)
+        self.openai_client = OpenAI(
+            api_key=settings.openai_api_key,
+            base_url=settings.llm_base_url  # 使用配置的API基础URL
+        )
     
     def rerank_single_document(self, query: str, document: str) -> Dict[str, Any]:
         """
@@ -520,3 +524,83 @@ class RetrieverFactory:
         else:
             return hybrid_retriever
 
+def demo_usage():
+    """
+    演示检索器的使用方法
+    """
+    # 设置路径（根据实际情况修改）
+    vector_store_path = Path("output/processed_documents/guide_faiss")
+    bm25_path = Path("output/processed_documents/guide_bm25.pkl")
+    chunks_metadata_path = Path("output/processed_documents/guide_metadata.json")
+    
+    # 1. 创建简单向量检索器
+    print("=== 向量检索示例 ===")
+    try:
+        vector_retriever = RetrieverFactory.create_vector_retriever(vector_store_path)
+        vector_results = vector_retriever.retrieve("博士后基金申请条件")
+        print(f"向量检索结果数量: {len(vector_results)}")
+        for i, result in enumerate(vector_results[:3]):
+            print(f"结果 {i+1}: 分数={result['score']:.4f}")
+            print(f"内容预览: {result['content'][:100]}...")
+            print()
+    except Exception as e:
+        print(f"向量检索演示失败: {e}")
+    
+    # 2. 创建高级混合检索器
+    print("=== 高级混合检索示例 ===")
+    try:
+        # 创建最强配置的检索器
+        advanced_retriever = RetrieverFactory.create_advanced_retriever(
+            vector_store_path=vector_store_path,
+            bm25_path=bm25_path,
+            chunks_metadata_path=chunks_metadata_path,
+            enable_parent_retrieval=True,   # 启用父文档检索
+            enable_llm_reranking=True       # 启用LLM重排
+        )
+        
+        # 执行检索
+        query = "申请博士后基金需要什么材料？"
+        results = advanced_retriever.retrieve(query, top_k=5)
+        
+        print(f"查询: {query}")
+        print(f"高级检索结果数量: {len(results)}")
+        
+        for i, result in enumerate(results):
+            print(f"\n结果 {i+1}:")
+            print(f"  类型: {result['metadata'].get('retrieval_type', 'unknown')}")
+            print(f"  分数: {result.get('final_score', result.get('score', 0)):.4f}")
+            if 'llm_reasoning' in result:
+                print(f"  LLM评价: {result['llm_reasoning'][:100]}...")
+            print(f"  内容预览: {result['content'][:200]}...")
+            
+    except Exception as e:
+        print(f"高级检索演示失败: {e}")
+    
+    # 3. 批量查询示例
+    print("\n=== 批量查询示例 ===")
+    queries = [
+        "博士后基金申请截止时间",
+        "申请材料包括什么",
+        "评审标准是什么",
+        "资助金额多少"
+    ]
+    
+    try:
+        config = RetrievalConfig(top_k=3, enable_llm_reranking=False)  # 关闭LLM重排以加快速度
+        retriever = RetrieverFactory.create_hybrid_retriever(
+            vector_store_path, bm25_path, chunks_metadata_path, config
+        )
+        
+        for query in queries:
+            results = retriever.retrieve(query)
+            print(f"\n查询: {query}")
+            print(f"结果: {len(results)} 个文档片段")
+            if results:
+                best_result = results[0]
+                print(f"最佳匹配 (分数={best_result.get('hybrid_score', 0):.4f}): {best_result['content'][:150]}...")
+                
+    except Exception as e:
+        print(f"批量查询演示失败: {e}")
+
+if __name__ == "__main__":
+    demo_usage()
