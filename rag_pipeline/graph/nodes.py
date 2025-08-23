@@ -1,486 +1,292 @@
-# 将所有作为 LangGraph 节点的函数（即接收 state 并返回更新后的 state 的函数）集中到一个文件中。
-# 原因: 节点是图的基本执行单元。将它们放在一起可以让我们专注于每个节点的具体业务逻辑，而不用关心它们是如何连接的。
-# 一个节点，一个功能: 每个函数代表图中的一个明确步骤
-# 依赖注入: 节点函数不应再依赖于全局变量（如 planner 或 task_handler_chain）。
-# 相反，它们应该在函数内部通过调用 components.chains 中的工厂函数（如 create_plan_chain()）来创建所需的链实例。这使得节点更加独立和可测试。
-# 清晰的 State: 每个节点函数的 state 参数都应该用我们之前在 state.py 中定义的相应 TypedDict 进行类型注解，这能极大地提高代码的可读性和健壮性。
-# 我们将把 创建链的实例 和 调用链 的逻辑都放在节点函数内部。
-
 # rag_pipeline/graph/nodes.py
 from pprint import pprint
-
-# LangChain/LangGraph imports
-# (We might not need these directly in nodes.py, but it's good practice to have them if needed)
+from typing import List
+from langchain_core.documents import Document
 
 # Local application imports
 from rag_pipeline.components import chains
 from rag_pipeline.components.retrievers import (
-    chunks_query_retriever,
-    chapter_summaries_query_retriever,
-    book_quotes_query_retriever,
-    # check_vector_stores_exist
+    document_retriever,
+    # 为了向后兼容，也可以使用原来的名称
+    # chunks_query_retriever, 
+    # chapter_summaries_query_retriever, 
+    # book_quotes_query_retriever
 )
-from rag_pipeline.graph import state  # Import the state definitions
-from rag_pipeline.utils.helpers import escape_quotes, text_wrap
+from rag_pipeline.graph.state import (
+    MainGraphState, 
+    FactualSubGraphState,
+    AnalyticalSubGraphState,
+    ToolUseSubGraphState
+)
+from rag_pipeline.utils.helpers import escape_quotes
+from rag_pipeline.graph.workflows import factual_retrieval_workflow_app
+from rag_pipeline.utils.web_search import create_web_search_tool
 
-# We will also need to import the compiled sub-workflows later.
-# For now, we define the nodes that will be part of them.
-# We'll import the compiled apps inside the nodes that run them.
-# from rag_pipeline.graph import workflows 这行代码让 nodes.py 依赖了 workflows.py，从而形成了循环。而 nodes.py 文件中的节点函数本身其实并不需要直接导入 workflows 模块。
+# --- Main Graph Nodes ---
 
-# 注意：检查循环导入: 请注意，nodes.py 中的 run_*_workflow 函数会从 workflows.py 导入 ..._app。而 workflows.py 会从 nodes.py 导入节点。这会造成循环导入！
-# 解决方案: 将 from src.rag_pipeline.graph.workflows import ..._app 这几行导入语句移动到需要它们的函数内部，而不是放在文件顶部。这是一种延迟导入，可以有效避免循环依赖问题。
-
-# --- Nodes for Qualitative Sub-workflows子图节点 ---
-
-# Node for sub-graph: retrieve_chunks_context_per_question
-def retrieve_chunks_context_per_question(state: state.QualitativeRetrievalGraphState):
+def classify_query(state: MainGraphState):
     """
-    Retrieves relevant chunks for a given question.
+    Node that orchestrates the query classification.
+    It's part of the main graph and receives the main state.
     """
-    print("Retrieving relevant chunks...")
-    question = state["question"]
+    print("---CLASSIFYING QUERY---")
+    state["curr_state"] = "classifying_query"
     
-    # Check if vector stores exist before attempting to retrieve
-    # if not check_vector_stores_exist():
-    #     print("Warning: Vector stores not found. Skipping retrieval.")
-    #     return {"context": "", "question": question}
+    classification_chain = chains.create_classification_chain()
+    result = classification_chain.invoke({"question": state["question"]})
+    query_type = result.query_type.strip().lower()
     
-    docs = chunks_query_retriever.get_relevant_documents(question)
-    context = " ".join(doc.page_content for doc in docs)
-    context = escape_quotes(context)
-    return {"context": context, "question": question}
+    print(f"---QUERY CLASSIFIED AS: {query_type}---")
+    
+    return {"query_type": query_type}
 
-# Node for sub-graph: retrieve_summaries_context_per_question
-def retrieve_summaries_context_per_question(state: state.QualitativeRetrievalGraphState):
-    """
-    Retrieves relevant chapter summaries for a given question.
-    """
-    print("Retrieving relevant chapter summaries...")
-    question = state["question"]
-    
-    # Check if vector stores exist before attempting to retrieve
-    # if not check_vector_stores_exist():
-    #     print("Warning: Vector stores not found. Skipping retrieval.")
-    #     return {"context": "", "question": question}
-    
-    docs_summaries = chapter_summaries_query_retriever.get_relevant_documents(question)
-    context_summaries = " ".join(
-        f"{doc.page_content} (Chapter {doc.metadata['chapter']})" for doc in docs_summaries
-    )
-    context_summaries = escape_quotes(context_summaries)
-    return {"context": context_summaries, "question": question}
+# --- Nodes for Factual Retrieval Sub-Graph ---
 
-# Node for sub-graph: retrieve_book_quotes_context_per_question
-def retrieve_book_quotes_context_per_question(state: state.QualitativeRetrievalGraphState):
+def enhance_query(state: FactualSubGraphState):
     """
-    Retrieves relevant book quotes for a given question.
+    Node to enhance the user's query for better retrieval.
+    Receives the FactualSubGraphState.
     """
-    print("Retrieving relevant book quotes...")
-    question = state["question"]
-    
-    # Check if vector stores exist before attempting to retrieve
-    # if not check_vector_stores_exist():
-    #     print("Warning: Vector stores not found. Skipping retrieval.")
-    #     return {"context": "", "question": question}
-    
-    docs_book_quotes = book_quotes_query_retriever.get_relevant_documents(question)
-    book_qoutes = " ".join(doc.page_content for doc in docs_book_quotes)
-    book_qoutes_context = escape_quotes(book_qoutes)
-    return {"context": book_qoutes_context, "question": question}
-
-# Node for sub-graph: keep_only_relevant_content
-def keep_only_relevant_content(state: state.QualitativeRetrievalGraphState):
-    """
-    Filters the context to keep only content relevant to the question.
-    """
-    # Instantiate the chain inside the node
-    chain = chains.create_keep_only_relevant_content_chain()
+    print("---ENHANCING QUERY---")
     
     question = state["question"]
-    context = state["context"]
-    input_data = {"query": question, "retrieved_documents": context}
+    enhancement_chain = chains.create_query_enhancement_chain()
+    result = enhancement_chain.invoke({"question": question})
+    enhanced_question = result.enhanced_question
     
-    print("keeping only the relevant content...")
-    pprint("--------------------")
-    output = chain.invoke(input_data)
+    print(f"---ENHANCED QUERY: {enhanced_question}---")
     
-    relevant_content = "".join(output.relevant_content)
-    relevant_content = escape_quotes(relevant_content)
-    
-    # This node returns all necessary fields for the state
-    return {"relevant_context": relevant_content, "context": context, "question": question}
+    return {"enhanced_question": enhanced_question}
 
-# Conditional edge for sub-graph: is_distilled_content_grounded_on_content
-def is_distilled_content_grounded_on_content(state: state.QualitativeRetrievalGraphState):
+def retrieve_documents(state: FactualSubGraphState):
     """
-    Checks if the distilled content is grounded in the original context.
+    Node to retrieve documents from the vector store.
+    Receives the FactualSubGraphState.
     """
-    pprint("--------------------")
-    print("Determining if the distilled content is grounded on the original context...")
+    print("---RETRIEVING DOCUMENTS---")
     
-    # Instantiate the chain inside the conditional function
-    chain = chains.create_is_distilled_content_grounded_on_content_chain()
+    query_to_use = state.get("enhanced_question") or state["question"]
+    retriever = document_retriever 
+    documents = retriever.get_relevant_documents(query_to_use)
     
-    distilled_content = state["relevant_context"]
-    original_context = state["context"]
-    input_data = {"distilled_content": distilled_content, "original_context": original_context}
+    print(f"---RETRIEVED {len(documents)} DOCUMENTS---")
     
-    output = chain.invoke(input_data)
-    grounded = output.grounded
-    
-    if grounded:
-        print("The distilled content is grounded on the original context.")
-        return "grounded on the original context"
-    else:
-        print("The distilled content is not grounded on the original context.")
-        return "not grounded on the original context"
+    return {"documents": documents}
 
-# Node for sub-graph: answer_question_from_context
-def answer_question_from_context(state: state.QualitativeAnswerGraphState):
+def rerank_documents(state: FactualSubGraphState):
     """
-    Generates an answer to a question based on the provided context.
+    Node to re-rank retrieved documents for relevance.
+    Receives the FactualSubGraphState.
     """
-    # Instantiate the chain inside the node
-    chain = chains.create_question_answer_from_context_cot_chain()
+    print("---RERANKING DOCUMENTS---")
     
-    question = state["question"]
-    # Handle the case for the final answer node where aggregated_context is used
-    context = state.get("aggregated_context") or state["context"]
+    question = state.get("enhanced_question") or state["question"]
+    documents = state["documents"]
     
-    input_data = {"question": question, "context": context}
-    print("Answering the question from the retrieved context...")
+    reranking_chain = chains.create_reranking_chain()
     
-    output = chain.invoke(input_data)
-    answer = output.answer_based_on_content
-    print(f'answer before checking hallucination: {answer}')
-    
-    return {"answer": answer, "context": context, "question": question}
+    graded_documents = []
+    for doc in documents:
+        result = reranking_chain.invoke({"question": question, "document": doc.page_content})
+        graded_documents.append((doc, result.score))
+        print(f"  - Doc: ...{doc.page_content[:50].strip()}... | Score: {result.score}")
 
-# Conditional edge for sub-graph: is_answer_grounded_on_context
-def is_answer_grounded_on_context(state: state.QualitativeAnswerGraphState):
-    """
-    Checks if the generated answer is grounded in the provided context.
-    """
-    print("Checking if the answer is grounded in the facts...")
+    graded_documents.sort(key=lambda x: x[1], reverse=True)
     
-    # Instantiate the chain
-    chain = chains.create_is_grounded_on_facts_chain()
+    relevance_threshold = 5.0
+    final_documents = [doc for doc, score in graded_documents if score >= relevance_threshold]
     
-    context = state["context"]
-    answer = state["answer"]
+    print(f"---FILTERED TO {len(final_documents)} DOCUMENTS (Threshold: >={relevance_threshold})---")
     
-    result = chain.invoke({"context": context, "answer": answer})
-    grounded_on_facts = result.grounded_on_facts
-    
-    if not grounded_on_facts:
-        print("The answer is hallucination.")
-        return "hallucination"
-    else:
-        print("The answer is grounded in the facts.")
-        return "grounded on context"
-    
-
-# --- 主图节点Nodes for the Main Agent (PlanExecute) ---
-# 构成顶层 Plan-and-Execute Agent 的节点
-
-def anonymize_queries(state: state.PlanExecute):
-    """
-    Anonymizes the main question by replacing named entities with variables.
-    """
-    state["curr_state"] = "anonymize_question"
-    print("Anonymizing question")
-    pprint("--------------------")
-    
-    # Instantiate chain
-    anonymize_chain = chains.create_anonymize_question_chain()
-    
-    input_values = {"question": state['question']}
-    anonymized_question_output = anonymize_chain.invoke(input_values)
-    
-    state["anonymized_question"] = anonymized_question_output["anonymized_question"]
-    state["mapping"] = anonymized_question_output["mapping"]
-    
-    print(f'anonymized_question: {state["anonymized_question"]}')
-    pprint("--------------------")
-    return state
-
-def plan_step(state: state.PlanExecute):
-    """
-    Generates an initial plan to answer the anonymized question.
-    """
-    state["curr_state"] = "planner"
-    print("Planning step")
-    pprint("--------------------")
-    
-    # Instantiate chain
-    planner_chain = chains.create_plan_chain()
-    
-    plan_output = planner_chain.invoke({"question": state['anonymized_question']})
-    
-    # 添加错误检查，确保plan_output不是None
-    if plan_output is None:
-        print("Warning: Planner returned None. Using empty plan.")
-        state["plan"] = []
-    elif not hasattr(plan_output, 'steps'):
-        print(f"Warning: Planner returned unexpected output: {plan_output}. Using empty plan.")
-        state["plan"] = []
-    else:
-        state["plan"] = plan_output.steps
-    
-    print(f'plan: {state["plan"]}')
-    return state
-    
-def deanonymize_queries(state: state.PlanExecute):
-    """
-    De-anonymizes the generated plan using the stored mapping.
-    """
-    state["curr_state"] = "de_anonymize_plan"
-    print("De-anonymizing plan")
-    pprint("--------------------")
-    
-    # Instantiate chain
-    deanonymize_chain = chains.create_deanonymize_plan_chain()
-    
-    deanonimzed_plan_output = deanonymize_chain.invoke({"plan": state["plan"], "mapping": state["mapping"]})
-    state["plan"] = deanonimzed_plan_output.plan
-    
-    print(f'de-anonimized_plan: {state["plan"]}')
-    return state
-
-def break_down_plan_step(state: state.PlanExecute):
-    """
-    Refines the plan into actionable steps for the tools.
-    Breaks down the plan steps into retrievable or answerable tasks.
-
-    Returns:
-        The updated state with the refined plan.
-    """
-    state["curr_state"] = "break_down_plan"
-    print("Breaking down plan steps into retrievable or answerable tasks")
-    pprint("--------------------")
-    
-    # Instantiate chain
-    break_down_chain = chains.create_break_down_plan_chain()
-    
-    # Note: The original chain expected a dict, but the prompt implies passing the plan list directly.
-    # Let's assume the chain can handle `state["plan"]`. We might need to adjust this if the chain fails.
-    # Let's wrap it in a dictionary to be safe, as per original code's prompt.
-    refined_plan_output = break_down_chain.invoke({"plan": state["plan"]})
-    state["plan"] = refined_plan_output.steps
-    return state
-
-def run_task_handler_chain(state: state.PlanExecute):
-    """
-    Decides which tool to use for the current step in the plan.
-    """
-    state["curr_state"] = "task_handler"
-    print("the current plan is:")
-    print(state["plan"])
-    pprint("--------------------") 
-
-    if 'past_steps' not in state or not state['past_steps']:
-        state["past_steps"] = []
-    
-    if 'tool' not in state:
-        state['tool'] = "" # Initialize tool if not present
-
-    curr_task = state["plan"][0]
-
-    # Instantiate chain
-    task_handler = chains.create_task_handler_chain()
-    
-    inputs = {
-        "curr_task": curr_task,
-        "aggregated_context": state.get("aggregated_context", ""),
-        "last_tool": state["tool"],
-        "past_steps": state["past_steps"],
-        "question": state["question"]
+    return {
+        "documents": final_documents,
+        "graded_documents": graded_documents
     }
-    
-    output = task_handler.invoke(inputs)
-  
-    state["past_steps"].append(curr_task)
-    state["plan"].pop(0)
 
-    state["query_to_retrieve_or_answer"] = output.query
-    state["tool"] = output.tool
+def generate_answer(state: FactualSubGraphState):
+    """
+    Node to generate the final answer based on the retrieved context.
+    Receives the FactualSubGraphState.
+    """
+    print("---GENERATING ANSWER---")
     
-    if output.tool == "answer_from_context":
-        state["curr_context"] = output.curr_context
+    question = state["question"]
+    documents = state["documents"]
     
-    # The tool name from the LLM needs to be mapped to our tool names
-    if "retrieve_chunks" in output.tool:
-        state["tool"] = "retrieve_chunks"
-    elif "retrieve_summaries" in output.tool:
-        state["tool"] = "retrieve_summaries"
-    elif "retrieve_quotes" in output.tool:
-        state["tool"] = "retrieve_quotes"
-    elif "answer_from_context" in output.tool:
-        state["tool"] = "answer"
-    else:
-        # Fallback or error, let's stick to the output tool name
-        print(f"Warning: Unknown tool '{output.tool}' received from task handler.")
+    # Create context string
+    context = "\n\n---\n\n".join([doc.page_content for doc in documents])
+    
+    generation_chain = chains.create_generation_chain()
+    result = generation_chain.invoke({"question": question, "context": context})
+    
+    answer = result.answer_based_on_content
+    print(f"---FINAL ANSWER GENERATED---")
+    
+    return {"generation": answer, "context": context}
 
-    return state  
+# --- Nodes for Analytical Sub-Graph ---
 
-# Conditional edge: retrieve_or_answer
-def retrieve_or_answer(state: state.PlanExecute):
+def generate_sub_queries(state: AnalyticalSubGraphState):
     """
-    Routes to the correct tool-running node based on the task handler's decision.
+    Node to decompose a complex question into sub-questions.
+    Receives the AnalyticalSubGraphState.
     """
-    state["curr_state"] = "decide_tool"
-    print(f"deciding which tool to use: {state['tool']}")
-    if state["tool"] == "retrieve_chunks":
-        return "chosen_tool_is_retrieve_chunks"
-    elif state["tool"] == "retrieve_summaries":
-        return "chosen_tool_is_retrieve_summaries"
-    elif state["tool"] == "retrieve_quotes":
-        return "chosen_tool_is_retrieve_quotes"
-    elif state["tool"] == "answer":
-        return "chosen_tool_is_answer"
-    else:
-        # This is a critical failure point. It means the LLM gave a tool name
-        # that we don't have a path for.
-        raise ValueError(f"Invalid tool '{state['tool']}' in state. Cannot route.")
+    print("---GENERATING SUB-QUERIES---")
+    
+    generation_chain = chains.create_sub_query_generation_chain()
+    result = generation_chain.invoke({"question": state["question"]})
+    
+    sub_queries = result.sub_queries
+    print(f"---DECOMPOSED INTO {len(sub_queries)} SUB-QUERIES---")
+    
+    return {"sub_queries": sub_queries}
 
-def run_qualitative_chunks_retrieval_workflow(state: state.PlanExecute):
+# Placeholder for the node that will execute the factual sub-graph for each sub-query
+def process_sub_queries(state: AnalyticalSubGraphState):
     """
-    Node that executes the chunks retrieval sub-workflow.
+    This node orchestrates running the factual sub-graph for each sub-query.
+    It embodies the modular reuse principle by invoking the complete factual retrieval workflow
+    for each decomposed sub-question.
     """
-    state["curr_state"] = "retrieve_chunks"
-    print("Running the qualitative chunks retrieval workflow...")
+    print("---PROCESSING SUB-QUERIES---")
     
-    # We will compile the workflow app in workflows.py and import it
-    from rag_pipeline.graph.workflows import qualitative_chunks_retrieval_workflow_app
+    sub_queries = state["sub_queries"]
+    sub_query_results = {}
     
-    question = state["query_to_retrieve_or_answer"]
-    inputs = {"question": question, "context": "", "relevant_context": ""}
+    print(f"Processing {len(sub_queries)} sub-queries...")
     
-    # The sub-workflow returns its final state.
-    sub_workflow_output = qualitative_chunks_retrieval_workflow_app.invoke(inputs)
-    
-    if "aggregated_context" not in state or not state["aggregated_context"]:
-        state["aggregated_context"] = ""
-    state["aggregated_context"] += sub_workflow_output['relevant_context']
-    return state
-
-# ... Similar functions for summaries and quotes ...
-def run_qualitative_summaries_retrieval_workflow(state: state.PlanExecute):
-    state["curr_state"] = "retrieve_summaries"
-    print("Running the qualitative summaries retrieval workflow...")
-    from rag_pipeline.graph.workflows import qualitative_summaries_retrieval_workflow_app
-    question = state["query_to_retrieve_or_answer"]
-    inputs = {"question": question, "context": "", "relevant_context": ""}
-    sub_workflow_output = qualitative_summaries_retrieval_workflow_app.invoke(inputs)
-    if "aggregated_context" not in state or not state["aggregated_context"]:
-        state["aggregated_context"] = ""
-    state["aggregated_context"] += sub_workflow_output['relevant_context']
-    return state
-
-def run_qualitative_book_quotes_retrieval_workflow(state: state.PlanExecute):
-    state["curr_state"] = "retrieve_book_quotes"
-    print("Running the qualitative book quotes retrieval workflow...")
-    from rag_pipeline.graph.workflows import qualitative_book_quotes_retrieval_workflow_app
-    question = state["query_to_retrieve_or_answer"]
-    inputs = {"question": question, "context": "", "relevant_context": ""}
-    sub_workflow_output = qualitative_book_quotes_retrieval_workflow_app.invoke(inputs)
-    if "aggregated_context" not in state or not state["aggregated_context"]:
-        state["aggregated_context"] = ""
-    state["aggregated_context"] += sub_workflow_output['relevant_context']
-    return state
-
-def run_qualtative_answer_workflow(state: state.PlanExecute):
-    """
-    Node that executes the qualitative answer sub-workflow for intermediate steps.
-    """
-    state["curr_state"] = "answer"
-    print("Running the qualitative answer workflow...")
-    from rag_pipeline.graph.workflows import qualitative_answer_workflow_app
-    
-    question = state["query_to_retrieve_or_answer"]
-    context = state["curr_context"]
-    inputs = {"question": question, "context": context, "answer": ""}
-    
-    sub_workflow_output = qualitative_answer_workflow_app.invoke(inputs)
-    
-    if "aggregated_context" not in state or not state["aggregated_context"]:
-        state["aggregated_context"] = ""
-    # Append the intermediate answer to the aggregated context
-    state["aggregated_context"] += "\n" + sub_workflow_output["answer"]
-    return state
-
-def replan_step(state: state.PlanExecute):
-    """
-    Replans the next steps based on the current progress.
-    """
-    state["curr_state"] = "replan"
-    print("Replanning step")
-    pprint("--------------------")
-    
-    # Instantiate chain
-    replanner_chain = chains.create_replanner_chain()
-    
-    inputs = {
-        "question": state["question"],
-        "plan": state["plan"], # The remaining plan
-        "past_steps": state["past_steps"],
-        "aggregated_context": state["aggregated_context"]
-    }
-    
-    plan_output = replanner_chain.invoke(inputs)
-    state["plan"] = plan_output.steps
-    return state
-
-# Conditional edge: can_be_answered
-def can_be_answered(state: state.PlanExecute):
-    """
-    Checks if the original question can now be answered with the aggregated context.
-    """
-    state["curr_state"] = "can_be_answered_already"
-    print("Checking if the ORIGINAL QUESTION can be answered already")
-    pprint("--------------------")
-    
-    # If the plan is empty, we must be finished.
-    if not state["plan"]:
-        print("Plan is empty. Proceeding to final answer.")
-        return "can_be_answered_already"
+    for i, sub_query in enumerate(sub_queries, 1):
+        print(f"  Processing sub-query {i}/{len(sub_queries)}: {sub_query[:60]}...")
         
-    # Instantiate chain
-    can_be_answered_chain = chains.create_can_be_answered_already_chain()
+        # Create input state for the factual sub-graph
+        factual_input = {
+            "question": sub_query,
+            "enhanced_question": None,
+            "documents": [],
+            "graded_documents": None,
+            "context": "",
+            "generation": ""
+        }
+        
+        try:
+            # Invoke the factual retrieval workflow for this sub-query
+            factual_result = factual_retrieval_workflow_app.invoke(factual_input)
+            
+            # Extract the generated answer
+            answer = factual_result.get("generation", "No answer generated")
+            sub_query_results[sub_query] = answer
+            
+            print(f"    ✓ Sub-query {i} processed successfully")
+            
+        except Exception as e:
+            print(f"    ✗ Error processing sub-query {i}: {str(e)}")
+            sub_query_results[sub_query] = f"Error processing query: {str(e)}"
     
-    question = state["question"]
-    context = state["aggregated_context"]
-    inputs = {"question": question, "context": context}
+    print(f"---COMPLETED PROCESSING {len(sub_query_results)} SUB-QUERIES---")
     
-    output = can_be_answered_chain.invoke(inputs)
-    
-    if output.can_be_answered:
-        print("The ORIGINAL QUESTION can be fully answered already.")
-        pprint("--------------------")
-        return "can_be_answered_already"
-    else:
-        print("The ORIGINAL QUESTION cannot be fully answered yet.")
-        pprint("--------------------")
-        return "cannot_be_answered_yet"
+    return {"sub_query_results": sub_query_results}
 
-def run_qualtative_answer_workflow_for_final_answer(state: state.PlanExecute):
+def synthesize_analytical_answer(state: AnalyticalSubGraphState):
     """
-    Node that generates the final answer to the original question.
+    Node to synthesize the final answer from the results of the sub-queries.
+    Receives the AnalyticalSubGraphState.
     """
-    state["curr_state"] = "get_final_answer"
-    print("Running the qualitative answer workflow for final answer...")
-    from rag_pipeline.graph.workflows import qualitative_answer_workflow_app
+    print("---SYNTHESIZING ANALYTICAL ANSWER---")
+    
+    synthesis_chain = chains.create_analytical_synthesis_chain()
+    result = synthesis_chain.invoke({
+        "question": state["question"],
+        "sub_query_results": state["sub_query_results"]
+    })
+    
+    answer = result.answer_based_on_content
+    print("---SYNTHESIS COMPLETE---")
+    
+    return {"generation": answer}
+
+# --- Nodes for Tool Use Sub-Graph ---
+
+def decide_tool_use(state: ToolUseSubGraphState):
+    """
+    Node to determine if external tools are needed to answer the question.
+    Receives the ToolUseSubGraphState.
+    """
+    print("---DECIDING TOOL USE---")
     
     question = state["question"]
-    context = state["aggregated_context"]
-    inputs = {"question": question, "context": context, "answer": ""}
+    decision_chain = chains.create_tool_decision_chain()
+    result = decision_chain.invoke({"question": question})
     
-    # We invoke the sub-workflow to get a grounded answer
-    final_output = qualitative_answer_workflow_app.invoke(inputs)
+    needs_tool = result.needs_external_tool
+    print(f"---TOOL DECISION: {'NEEDED' if needs_tool else 'NOT NEEDED'} - {result.reasoning}---")
     
-    print("Final Answer:")
-    pprint(final_output["answer"])
+    return {"needs_tool": needs_tool}
+
+def generate_search_query(state: ToolUseSubGraphState):
+    """
+    Node to generate an optimized search query for external tools.
+    Receives the ToolUseSubGraphState.
+    """
+    print("---GENERATING SEARCH QUERY---")
     
-    state["response"] = final_output["answer"]
-    return state
+    question = state["question"]
+    query_chain = chains.create_search_query_generation_chain()
+    result = query_chain.invoke({"question": question})
+    
+    search_query = result.search_query
+    print(f"---SEARCH QUERY GENERATED: {search_query}---")
+    
+    return {"search_query": search_query}
+
+def execute_web_search(state: ToolUseSubGraphState):
+    """
+    Node to execute web search using external tools.
+    Receives the ToolUseSubGraphState.
+    """
+    print("---EXECUTING WEB SEARCH---")
+    
+    search_query = state["search_query"]
+    search_tool = create_web_search_tool()
+    
+    try:
+        search_results = search_tool.search(search_query)
+        print(f"---SEARCH COMPLETED: {len(search_results)} results found---")
+        
+        return {"search_results": search_results}
+        
+    except Exception as e:
+        print(f"---SEARCH FAILED: {str(e)}---")
+        error_result = [{
+            'title': '搜索失败',
+            'snippet': f'无法获取外部信息：{str(e)}',
+            'url': ''
+        }]
+        return {"search_results": error_result}
+
+def generate_tool_use_answer(state: ToolUseSubGraphState):
+    """
+    Node to generate the final answer based on search results.
+    Receives the ToolUseSubGraphState.
+    """
+    print("---GENERATING TOOL USE ANSWER---")
+    
+    question = state["question"]
+    search_results = state["search_results"]
+    
+    # Format search results for prompt
+    formatted_results = []
+    for i, result in enumerate(search_results, 1):
+        formatted_results.append(f"{i}. 标题: {result['title']}\n   内容: {result['snippet']}\n   来源: {result['url']}")
+    
+    search_results_text = "\n\n".join(formatted_results)
+    
+    answer_chain = chains.create_tool_use_answer_generation_chain()
+    result = answer_chain.invoke({
+        "question": question, 
+        "search_results": search_results_text
+    })
+    
+    answer = result.answer_based_on_content
+    print("---TOOL USE ANSWER GENERATED---")
+    
+    return {"generation": answer}

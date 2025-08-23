@@ -4,7 +4,7 @@
 # 所有名为 create_..._chain 的函数
 # rag_pipeline/components/chains.py
 
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 
 # Import from our new modules
@@ -120,3 +120,134 @@ def create_can_be_answered_already_chain():
         input_variables=["question","context"],
     )
     return prompt | llm.with_structured_output(models.CanBeAnsweredAlready, method="function_calling")
+
+def create_classification_chain():
+    """
+    Factory function to create the query classification chain.
+
+    This function encapsulates the logic for creating a chain that takes a user's
+    question and classifies it into a predefined category using a structured output
+    format.
+
+    Returns:
+        Runnable: A LangChain runnable object ready to be invoked.
+    """
+    llm = get_chat_model()
+    prompt = PromptTemplate(
+        template=prompts.query_classifier_prompt_template,
+        input_variables=["question"],
+    )
+    # Ensure structured output using the Pydantic model
+    return prompt | llm.with_structured_output(
+        models.QueryClassification, method="function_calling"
+    )
+
+def create_query_enhancement_chain():
+    """
+    Factory function for the query enhancement chain.
+    """
+    llm = get_chat_model()
+    prompt = PromptTemplate(
+        template=prompts.query_enhancement_prompt_template,
+        input_variables=["question"],
+    )
+    return prompt | llm.with_structured_output(
+        models.EnhancedQuery, method="function_calling"
+    )
+
+def create_reranking_chain():
+    """
+    Factory function for the document re-ranking chain.
+    """
+    llm = get_chat_model()
+    prompt = PromptTemplate(
+        template=prompts.document_reranking_prompt_template,
+        input_variables=["question", "document"],
+    )
+    return prompt | llm.with_structured_output(
+        models.DocumentRelevanceScore, method="function_calling"
+    )
+
+def create_generation_chain():
+    """
+    Factory function for the answer generation chain.
+    Used in factual sub-graph to generate final answers.
+    """
+    llm = get_chat_model()
+    prompt = PromptTemplate(
+        template=prompts.generation_prompt_template,
+        input_variables=["question", "context"],
+    )
+    return prompt | llm.with_structured_output(
+        models.GeneratedAnswer, method="function_calling"
+    )
+
+def create_sub_query_generation_chain():
+    """
+    Factory function for the sub-query generation chain.
+    Used in analytical sub-graph to decompose complex questions.
+    """
+    llm = get_chat_model()
+    prompt = PromptTemplate(
+        template=prompts.sub_query_generation_prompt_template,
+        input_variables=["question"],
+    )
+    return prompt | llm.with_structured_output(
+        models.SubQueries, method="function_calling"
+    )
+
+def create_analytical_synthesis_chain():
+    """
+    Factory function for the analytical synthesis chain.
+    Used in analytical sub-graph to synthesize answers from sub-queries.
+    """
+    llm = get_chat_model()
+    prompt = PromptTemplate(
+        template=prompts.analytical_synthesis_prompt_template,
+        input_variables=["question", "sub_query_results"],
+    )
+    return prompt | llm.with_structured_output(
+        models.AnalyticalSynthesis, method="function_calling"
+    )
+
+def create_tool_decision_chain():
+    """
+    Factory function for the tool decision chain.
+    Used to determine if external tools are needed to answer a question.
+    """
+    llm = get_chat_model()
+    prompt = PromptTemplate(
+        template=prompts.tool_decision_prompt_template,
+        input_variables=["question"],
+    )
+    return prompt | llm.with_structured_output(
+        models.ToolDecision, method="function_calling"
+    )
+
+def create_search_query_generation_chain():
+    """
+    Factory function for the search query generation chain.
+    Used to create optimized search queries for external tools.
+    """
+    llm = get_chat_model()
+    prompt = PromptTemplate(
+        template=prompts.search_query_generation_prompt_template,
+        input_variables=["question"],
+    )
+    return prompt | llm.with_structured_output(
+        models.SearchQuery, method="function_calling"
+    )
+
+def create_tool_use_answer_generation_chain():
+    """
+    Factory function for the tool use answer generation chain.
+    Used to generate answers based on external search results.
+    """
+    llm = get_chat_model()
+    prompt = PromptTemplate(
+        template=prompts.tool_use_answer_generation_prompt_template,
+        input_variables=["question", "search_results"],
+    )
+    return prompt | llm.with_structured_output(
+        models.ToolUseAnswer, method="function_calling"
+    )

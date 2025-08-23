@@ -1,8 +1,8 @@
 import tiktoken
 import re 
-from langchain.docstore.document import Document
+from langchain_core.documents import Document
 import PyPDF2
-import pylcs
+import pylcs  # 暂时注释，需要编译环境
 import pandas as pd
 import textwrap
 

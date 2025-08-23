@@ -54,3 +54,94 @@ class DeAnonymizePlan(BaseModel):
 class CanBeAnsweredAlready(BaseModel):
     """Possible results of the action."""
     can_be_answered: bool = Field(description="Whether the question can be fully answered or not based on the given context.")
+
+
+# --- 问题分类 ---
+class QueryClassification(BaseModel):
+    """
+    Output schema for the query classification chain.
+    Ensures the LLM's output is a single, valid category name.
+    """
+    query_type: str = Field(
+        description="The classification of the user's query. Must be one of: 'simple_retrieval', 'comparison', 'logical_reasoning', 'scenario_synthesis', 'tool_use', 'data_visualization'."
+    )
+# --- 问题分类 ---
+
+# --- 事实型查询的结构化输出 ---
+class EnhancedQuery(BaseModel):
+    """
+    Output schema for the query enhancement chain.
+    """
+    enhanced_question: str = Field(
+        description="An improved, more specific version of the original query, optimized for vector store retrieval."
+    )
+
+class DocumentRelevanceScore(BaseModel):
+    """
+    Output schema for the document re-ranking chain.
+    Provides a relevance score for a single document against a query.
+    """
+    score: float = Field(
+        description="The relevance score of the document to the query, on a scale of 1 to 10."
+    )
+    explanation: str = Field(
+        description="A brief explanation of why the document received this score."
+    )
+
+class GeneratedAnswer(BaseModel):
+    """
+    Output schema for the answer generation chain.
+    """
+    answer_based_on_content: str = Field(
+        description="The final answer generated based on the provided context and question."
+    )
+# --- 事实型查询的结构化输出 ---
+
+# --- 分析推理子图的结构化输出 ---
+class SubQueries(BaseModel):
+    """
+    Output schema for the sub-query generation chain.
+    Used in the analytical sub-graph to decompose complex questions.
+    """
+    sub_queries: List[str] = Field(
+        description="A list of specific sub-questions that together can answer the original complex question. Each sub-query should be factual and independently answerable."
+    )
+
+class AnalyticalSynthesis(BaseModel):
+    """
+    Output schema for the analytical synthesis chain.
+    Used to combine answers from multiple sub-queries into a coherent final answer.
+    """
+    answer_based_on_content: str = Field(
+        description="A comprehensive, well-structured answer that synthesizes information from all sub-query results to address the original analytical question."
+    )
+# --- 分析推理子图的结构化输出 ---
+
+# --- 工具使用子图的结构化输出 ---
+class ToolDecision(BaseModel):
+    """
+    Output schema for tool decision making.
+    """
+    needs_external_tool: bool = Field(
+        description="Whether the question requires external tools (like web search) to answer adequately."
+    )
+    reasoning: str = Field(
+        description="Explanation of why external tools are or are not needed."
+    )
+
+class SearchQuery(BaseModel):
+    """
+    Output schema for search query generation.
+    """
+    search_query: str = Field(
+        description="An optimized search query for finding relevant external information."
+    )
+
+class ToolUseAnswer(BaseModel):
+    """
+    Output schema for generating answers based on external tool results.
+    """
+    answer_based_on_content: str = Field(
+        description="A comprehensive answer that combines information from search results with knowledge about the China Postdoctoral Science Foundation."
+    )
+# --- 工具使用子图的结构化输出 ---
