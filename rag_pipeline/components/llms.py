@@ -4,6 +4,7 @@
 # src/rag_pipeline/components/llms.py
 
 from langchain_openai import ChatOpenAI
+from langchain_openai import OpenAIEmbeddings
 # from langchain_community.chat_models import ChatOpenAI as CommunityChatOpenAI
 from rag_pipeline.settings import settings
 
@@ -20,12 +21,13 @@ def get_chat_model() -> ChatOpenAI:
     #    通过 api_key 和 base_url 参数，将其指向你的第三方服务。
     #    这样就能解决 with_structured_output 的 NotImplementedError。
     return ChatOpenAI(
+        model=settings.chat_model,
         temperature=settings.default_temperature,
-        model=settings.chat_model, # 注意：参数名是 model 而不是 model_name
         max_tokens=settings.default_max_tokens,
-        api_key=settings.openai_api_key, # Pydantic 会从 .env 加载
-        base_url=settings.llm_base_url    # Pydantic 会从 .env 加载
+        openai_api_key=settings.api_key,  # 明确使用openai_api_key参数
+        openai_api_base=settings.llm_base_url  # 使用openai_api_base参数
     )
+
 
 def get_planner_model() -> ChatOpenAI:
     """
@@ -37,17 +39,21 @@ def get_planner_model() -> ChatOpenAI:
         temperature=settings.default_temperature,
         model=settings.planner_model, # 注意：参数名是 model 而不是 model_name
         max_tokens=settings.default_max_tokens,
-        api_key=settings.openai_api_key, # Pydantic 会从 .env 加载
+        api_key=settings.api_key, # 使用动态API密钥
         base_url=settings.llm_base_url    # Pydantic 会从 .env 加载
     )
 
-def get_embedding_model() -> ChatOpenAI:
+def get_embedding_model() -> OpenAIEmbeddings:
     """
     Returns an OpenAIEmbeddings instance configured with settings.
     Used for creating embeddings for vector stores.
     """
-    from langchain_openai import OpenAIEmbeddings
+    import os
+    # 确保环境变量设置，与ChatOpenAI保持一致
+    os.environ['OPENAI_API_KEY'] = settings.api_key
+    
     return OpenAIEmbeddings(
-        openai_api_key=settings.openai_api_key,
-        base_url=settings.llm_base_url  # Pydantic 会从 .env 加载
+        model=settings.embedding_model,
+        openai_api_key=settings.api_key,
+        openai_api_base=settings.llm_base_url
     )

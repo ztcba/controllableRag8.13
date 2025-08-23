@@ -10,7 +10,12 @@ def create_retrievers():
     """
     Loads FAISS vector stores and creates retrievers.
     """
-    embeddings = OpenAIEmbeddings(openai_api_key=settings.openai_api_key)
+    # 使用xiaocaseai API配置创建embeddings
+    embeddings = OpenAIEmbeddings(
+        openai_api_key=settings.xiaocaseai_api_key,
+        openai_api_base=settings.llm_base_url,
+        model=settings.embedding_model
+    )
     
     chunks_vector_store = FAISS.load_local(
         settings.chunks_vector_store_path, 

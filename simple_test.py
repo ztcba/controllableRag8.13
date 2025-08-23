@@ -1,40 +1,64 @@
-import sys
-from pathlib import Path
+#!/usr/bin/env python3
+"""
+简单的结构化输出测试脚本
+"""
 
-# Add src to Python path
-src_path = Path(__file__).parent / "src"
-sys.path.insert(0, str(src_path))
+import os
+from dotenv import load_dotenv
+from pydantic import BaseModel, Field
+from langchain_core.prompts import PromptTemplate
+from langchain_openai import ChatOpenAI
 
-print("=== LLM Configuration Test ===")
+# 加载.env文件
+load_dotenv()
 
-# Test 1: Load settings
-print("\n1. Loading settings...")
-try:
-    from src.rag_pipeline.settings import settings
-    print("   ✓ Settings loaded successfully")
-    print(f"   Default model: {settings.default_model}")
-    print(f"   LLM provider: {settings.llm_provider}")
-    print(f"   LLM base URL: {settings.llm_base_url}")
-except Exception as e:
-    print(f"   ✗ Failed to load settings: {e}")
-    sys.exit(1)
+# 定义简单的测试模型
+class SimpleTest(BaseModel):
+    answer: bool = Field(description="True or False")
+    explanation: str = Field(description="Brief explanation")
 
-# Test 2: Instantiate models
-print("\n2. Testing model instantiation...")
-try:
-    from src.rag_pipeline.components.llms import get_chat_model, get_planner_model
+def main():
+    print("🧪 测试模型结构化输出支持...")
     
-    chat_model = get_chat_model()
-    print(f"   ✓ Chat model instantiated: {type(chat_model).__name__}")
+    # 从.env获取配置
+    api_key = os.getenv('XIAOCASEAI_API_KEY')
+    api_base = os.getenv('LLM_BASE_URL') 
+    model_name = os.getenv('CHAT_MODEL', 'gpt-4')
     
-    planner_model = get_planner_model()
-    print(f"   ✓ Planner model instantiated: {type(planner_model).__name__}")
+    if not api_key:
+        print("❌ 未找到 XIAOCASEAI_API_KEY")
+        return
     
-    print("\n🎉 All configuration tests passed!")
-    print("You can now use the LLM in your application.")
+    print(f"📱 API Base: {api_base}")
+    print(f"📱 Model: {model_name}")
     
-except Exception as e:
-    print(f"   ✗ Failed to instantiate models: {e}")
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
+    # 创建LLM
+    llm = ChatOpenAI(
+        openai_api_key=api_key,
+        openai_api_base=api_base,
+        model_name=model_name,
+        temperature=0
+    )
+    
+    # 简单prompt
+    prompt = PromptTemplate(
+        template="Is 2+2 equal to 4? Answer with true/false and explain briefly.",
+        input_variables=[]
+    )
+
+
+    chain = prompt | llm.with_structured_output(SimpleTest)
+            
+    result = chain.invoke({})
+            
+    if result is None:
+        print(f"❌ {name}: 返回 None")
+    else:
+        print(f"✅ 成功!")
+        print(f"   答案: {result.answer}")
+        print(f"   解释: {result.explanation}")
+                
+
+
+if __name__ == "__main__":
+    main()

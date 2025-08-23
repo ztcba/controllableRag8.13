@@ -44,7 +44,7 @@ def create_is_grounded_on_facts_chain():
         template=prompts.is_grounded_on_facts_prompt_template,
         input_variables=["context", "answer"],
     )
-    return prompt | llm.with_structured_output(models.is_grounded_on_facts, method="function_calling")
+    return prompt | llm.with_structured_output(models.is_grounded_on_facts)
 
 def create_can_be_answered_chain():
     llm = get_chat_model()
