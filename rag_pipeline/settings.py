@@ -42,7 +42,7 @@ class Settings(BaseSettings):
 
     # 2. Model Configuration
     # 这些字段是必需的，必须在 .env 文件中提供
-    default_model: str = Field(..., alias='DEFAULT_LLM_MODEL')
+    # default_model: str = Field(..., alias='DEFAULT_LLM_MODEL')
     chat_model: str = Field(..., alias='CHAT_MODEL')
     planner_model: str = Field(..., alias='PLANNER_MODEL')
     embedding_model: str = Field(..., alias='EMBEDDING_MODEL')  # 默认embedding模型

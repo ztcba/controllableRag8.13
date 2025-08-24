@@ -26,7 +26,7 @@ from rank_bm25 import BM25Okapi
 import tiktoken
 
 # Import project settings
-from ...settings import settings
+from rag_pipeline.settings import settings
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
