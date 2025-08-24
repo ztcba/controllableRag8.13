@@ -4,6 +4,9 @@ from langchain_openai import ChatOpenAI
 from langchain.vectorstores import  FAISS
 from langchain_openai import OpenAIEmbeddings
 from langchain.prompts import PromptTemplate
+
+# Import LLM factory functions
+from rag_pipeline.components.llms import get_chat_model, get_embedding_model
 from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_core.output_parsers import JsonOutputParser
 
@@ -33,7 +36,7 @@ os.environ["OPENAI_API_KEY"] = os.getenv('OPENAI_API_KEY')
 
 
 def create_retrievers():
-    embeddings = OpenAIEmbeddings()
+    embeddings = get_embedding_model()
     chunks_vector_store =  FAISS.load_local("chunks_vector_store", embeddings, allow_dangerous_deserialization=True)
     chapter_summaries_vector_store =  FAISS.load_local("chapter_summaries_vector_store", embeddings, allow_dangerous_deserialization=True)
     book_quotes_vectorstore =  FAISS.load_local("book_quotes_vectorstore", embeddings, allow_dangerous_deserialization=True)
@@ -104,7 +107,7 @@ def create_keep_only_relevant_content_chain():
     )
 
 
-    keep_only_relevant_content_llm = ChatOpenAI(temperature=0, model_name="gpt-4o", max_tokens=2000)
+    keep_only_relevant_content_llm = get_chat_model()
     keep_only_relevant_content_chain = keep_only_relevant_content_prompt | keep_only_relevant_content_llm.with_structured_output(KeepRelevantContent)
     return keep_only_relevant_content_chain
 
@@ -142,7 +145,7 @@ def create_question_answer_from_context_cot_chain():
     class QuestionAnswerFromContext(BaseModel):
         answer_based_on_content: str = Field(description="generates an answer to a query based on a given context.")
 
-    question_answer_from_context_llm = ChatOpenAI(temperature=0, model_name="gpt-4o", max_tokens=2000)
+    question_answer_from_context_llm = get_chat_model()
 
 
     question_answer_cot_prompt_template = """ 
@@ -238,7 +241,7 @@ def create_is_relevant_content_chain():
 
     # is_relevant_json_parser = JsonOutputParser(pydantic_object=Relevance)
     # is_relevant_llm = ChatGroq(temperature=0, model_name="llama3-70b-8192", groq_api_key=groq_api_key, max_tokens=4000)
-    is_relevant_llm = ChatOpenAI(temperature=0, model_name="gpt-4o", max_tokens=2000)
+    is_relevant_llm = get_chat_model()
 
     is_relevant_content_prompt = PromptTemplate(
         template=is_relevant_content_prompt_template,
@@ -285,7 +288,7 @@ def create_is_grounded_on_facts_chain():
         """
         grounded_on_facts: bool = Field(description="Answer is grounded in the facts, 'yes' or 'no'")
 
-    is_grounded_on_facts_llm = ChatOpenAI(temperature=0, model_name="gpt-4o", max_tokens=2000)
+    is_grounded_on_facts_llm = get_chat_model()
     is_grounded_on_facts_prompt_template = """You are a fact-checker that determines if the given answer {answer} is grounded in the given context {context}
     you don't mind if it doesn't make sense, as long as it is grounded in the context.
     output a json containing the answer to the question, and appart from the json format don't output any additional text.
@@ -316,7 +319,7 @@ def create_can_be_answered_chain():
     )
 
     # can_be_answered_llm = ChatGroq(temperature=0, model_name="llama3-70b-8192", groq_api_key=groq_api_key, max_tokens=4000)
-    can_be_answered_llm = ChatOpenAI(temperature=0, model_name="gpt-4o", max_tokens=2000)
+    can_be_answered_llm = get_chat_model()
     can_be_answered_chain = answer_question_prompt | can_be_answered_llm.with_structured_output(QuestionAnswer)
     return can_be_answered_chain
 
@@ -341,7 +344,7 @@ def create_is_distilled_content_grounded_on_content_chain():
     )
 
     # is_distilled_content_grounded_on_content_llm = ChatGroq(temperature=0, model_name="llama3-70b-8192", groq_api_key=groq_api_key, max_tokens=4000)
-    is_distilled_content_grounded_on_content_llm =ChatOpenAI(temperature=0, model_name="gpt-4o", max_tokens=2000)
+    is_distilled_content_grounded_on_content_llm = get_chat_model()
 
     is_distilled_content_grounded_on_content_chain = is_distilled_content_grounded_on_content_prompt | is_distilled_content_grounded_on_content_llm.with_structured_output(IsDistilledContentGroundedOnContent)
     return is_distilled_content_grounded_on_content_chain
@@ -563,11 +566,11 @@ def create_qualitative_answer_workflow_app():
 class PlanExecute(TypedDict):
     curr_state: str
     question: str
-    anonymized_question: str
+    # anonymized_question: str
     query_to_retrieve_or_answer: str
     plan: List[str]
     past_steps: List[str]
-    mapping: dict
+    # mapping: dict
     curr_context: str
     aggregated_context: str
     tool: str
@@ -596,7 +599,7 @@ def create_plan_chain():
         input_variables=["question"], 
         )
 
-    planner_llm = ChatOpenAI(temperature=0, model_name="gpt-4o", max_tokens=2000)
+    planner_llm = get_chat_model()
 
     planner = planner_prompt | planner_llm.with_structured_output(Plan)
     return planner
@@ -609,8 +612,7 @@ def create_break_down_plan_chain():
     1. every step has to be able to be executed by either:
         i. retrieving relevant information from a vector store of book chunks
         ii. retrieving relevant information from a vector store of chapter summaries
-        iii. retrieving relevant information from a vector store of book quotes
-        iv. answering a question from a given context.
+        iii. answering a question from a given context.
     2. every step should contain all the information needed to execute it.
 
     output the refined plan
@@ -621,7 +623,7 @@ def create_break_down_plan_chain():
         input_variables=["plan"],
     )
 
-    break_down_plan_llm = ChatOpenAI(temperature=0, model_name="gpt-4o", max_tokens=2000)
+    break_down_plan_llm = get_chat_model()
 
     break_down_plan_chain = break_down_plan_prompt | break_down_plan_llm.with_structured_output(Plan)
 
@@ -667,7 +669,7 @@ def create_replanner_chain():
         # partial_variables={"format_instructions": act_possible_results_parser.get_format_instructions()},
     )
 
-    replanner_llm = ChatOpenAI(temperature=0, model_name="gpt-4o", max_tokens=2000)
+    replanner_llm = get_chat_model()
 
 
 
@@ -679,12 +681,10 @@ def create_task_handler_chain():
     You have the following tools at your disposal:
     Tool A: a tool that retrieves relevant information from a vector store of book chunks based on a given query.
     - use Tool A when you think the current task should search for information in the book chunks.
-    Took B: a tool that retrieves relevant information from a vector store of chapter summaries based on a given query.
+    Tool B: a tool that retrieves relevant information from a vector store of chapter summaries based on a given query.
     - use Tool B when you think the current task should search for information in the chapter summaries.
-    Tool C: a tool that retrieves relevant information from a vector store of quotes from the book based on a given query.
-    - use Tool C when you think the current task should search for information in the book quotes.
-    Tool D: a tool that answers a question from a given context.
-    - use Tool D ONLY when you the current task can be answered by the aggregated context {aggregated_context}
+    Tool C: a tool that answers a question from a given context.
+    - use Tool C ONLY when you the current task can be answered by the aggregated context {aggregated_context}
 
     you also receive the last tool used {last_tool}
     if {last_tool} was retrieve_chunks, use other tools than Tool A.
@@ -708,64 +708,64 @@ def create_task_handler_chain():
         input_variables=["curr_task", "aggregated_context", "last_tool" "past_steps", "question"],
     )
 
-    task_handler_llm = ChatOpenAI(temperature=0, model_name="gpt-4o", max_tokens=2000)
+    task_handler_llm = get_chat_model()
     task_handler_chain = task_handler_prompt | task_handler_llm.with_structured_output(TaskHandlerOutput)
     return task_handler_chain
 
-def create_anonymize_question_chain():
-    class AnonymizeQuestion(BaseModel):
-        """Anonymized question and mapping."""
-        anonymized_question : str = Field(description="Anonymized question.")
-        mapping: dict = Field(description="Mapping of original name entities to variables.")
-        explanation: str = Field(description="Explanation of the action.")
+# def create_anonymize_question_chain():
+#     class AnonymizeQuestion(BaseModel):
+#         """Anonymized question and mapping."""
+#         anonymized_question : str = Field(description="Anonymized question.")
+#         mapping: dict = Field(description="Mapping of original name entities to variables.")
+#         explanation: str = Field(description="Explanation of the action.")
 
-    anonymize_question_parser = JsonOutputParser(pydantic_object=AnonymizeQuestion)
-
-
-    anonymize_question_prompt_template = """ You are a question anonymizer. The input You receive is a string containing several words that
-    construct a question {question}. Your goal is to changes all name entities in the input to variables, and remember the mapping of the original name entities to the variables.
-    ```example1:
-            if the input is \"who is harry potter?\" the output should be \"who is X?\" and the mapping should be {{\"X\": \"harry potter\"}} ```
-    ```example2:
-            if the input is \"how did the bad guy played with the alex and rony?\"
-            the output should be \"how did the X played with the Y and Z?\" and the mapping should be {{\"X\": \"bad guy\", \"Y\": \"alex\", \"Z\": \"rony\"}}```
-    you must replace all name entities in the input with variables, and remember the mapping of the original name entities to the variables.
-    output the anonymized question and the mapping as two separate fields in a json format as described here, without any additional text apart from the json format.
-   """
+#     anonymize_question_parser = JsonOutputParser(pydantic_object=AnonymizeQuestion)
 
 
-
-    anonymize_question_prompt = PromptTemplate(
-        template=anonymize_question_prompt_template,
-        input_variables=["question"],
-        partial_variables={"format_instructions": anonymize_question_parser.get_format_instructions()},
-    )
-
-    anonymize_question_llm = ChatOpenAI(temperature=0, model_name="gpt-4o", max_tokens=2000)
-    anonymize_question_chain = anonymize_question_prompt | anonymize_question_llm | anonymize_question_parser
-    return anonymize_question_chain
-
-
-def create_deanonymize_plan_chain():
-    class DeAnonymizePlan(BaseModel):
-        """Possible results of the action."""
-        plan: List = Field(description="Plan to follow in future. with all the variables replaced with the mapped words.")
+#     anonymize_question_prompt_template = """ You are a question anonymizer. The input You receive is a string containing several words that
+#     construct a question {question}. Your goal is to changes all name entities in the input to variables, and remember the mapping of the original name entities to the variables.
+#     ```example1:
+#             if the input is \"who is harry potter?\" the output should be \"who is X?\" and the mapping should be {{\"X\": \"harry potter\"}} ```
+#     ```example2:
+#             if the input is \"how did the bad guy played with the alex and rony?\"
+#             the output should be \"how did the X played with the Y and Z?\" and the mapping should be {{\"X\": \"bad guy\", \"Y\": \"alex\", \"Z\": \"rony\"}}```
+#     you must replace all name entities in the input with variables, and remember the mapping of the original name entities to the variables.
+#     output the anonymized question and the mapping as two separate fields in a json format as described here, without any additional text apart from the json format.
+#    """
 
 
-    de_anonymize_plan_prompt_template = """ you receive a list of tasks: {plan}, where some of the words are replaced with mapped variables. you also receive
-    the mapping for those variables to words {mapping}. replace all the variables in the list of tasks with the mapped words. if no variables are present,
-    return the original list of tasks. in any case, just output the updated list of tasks in a json format as described here, without any additional text apart from the
-    """
+
+#     anonymize_question_prompt = PromptTemplate(
+#         template=anonymize_question_prompt_template,
+#         input_variables=["question"],
+#         partial_variables={"format_instructions": anonymize_question_parser.get_format_instructions()},
+#     )
+
+#     anonymize_question_llm = ChatOpenAI(temperature=0, model_name="gpt-4o", max_tokens=2000)
+#     anonymize_question_chain = anonymize_question_prompt | anonymize_question_llm | anonymize_question_parser
+#     return anonymize_question_chain
 
 
-    de_anonymize_plan_prompt = PromptTemplate(
-        template=de_anonymize_plan_prompt_template,
-        input_variables=["plan", "mapping"],
-    )
+# def create_deanonymize_plan_chain():
+#     class DeAnonymizePlan(BaseModel):
+#         """Possible results of the action."""
+#         plan: List = Field(description="Plan to follow in future. with all the variables replaced with the mapped words.")
 
-    de_anonymize_plan_llm = ChatOpenAI(temperature=0, model_name="gpt-4o", max_tokens=2000)
-    de_anonymize_plan_chain = de_anonymize_plan_prompt | de_anonymize_plan_llm.with_structured_output(DeAnonymizePlan)
-    return de_anonymize_plan_chain
+
+#     de_anonymize_plan_prompt_template = """ you receive a list of tasks: {plan}, where some of the words are replaced with mapped variables. you also receive
+#     the mapping for those variables to words {mapping}. replace all the variables in the list of tasks with the mapped words. if no variables are present,
+#     return the original list of tasks. in any case, just output the updated list of tasks in a json format as described here, without any additional text apart from the
+#     """
+
+
+#     de_anonymize_plan_prompt = PromptTemplate(
+#         template=de_anonymize_plan_prompt_template,
+#         input_variables=["plan", "mapping"],
+#     )
+
+#     de_anonymize_plan_llm = ChatOpenAI(temperature=0, model_name="gpt-4o", max_tokens=2000)
+#     de_anonymize_plan_chain = de_anonymize_plan_prompt | de_anonymize_plan_llm.with_structured_output(DeAnonymizePlan)
+#     return de_anonymize_plan_chain
 
 def create_can_be_answered_already_chain():
     class CanBeAnsweredAlready(BaseModel):
@@ -784,7 +784,7 @@ def create_can_be_answered_already_chain():
         input_variables=["question","context"],
     )
 
-    can_be_answered_already_llm = ChatOpenAI(temperature=0, model_name="gpt-4o", max_tokens=2000)
+    can_be_answered_already_llm = get_chat_model()
     can_be_answered_already_chain = can_be_answered_already_prompt | can_be_answered_already_llm.with_structured_output(CanBeAnsweredAlready)
     return can_be_answered_already_chain
 
@@ -794,11 +794,11 @@ qualitative_chunks_retrieval_workflow_app = create_qualitative_retrieval_book_ch
 qualitative_summaries_retrieval_workflow_app = create_qualitative_retrieval_chapter_summaries_workflow_app()
 qualitative_book_quotes_retrieval_workflow_app = create_qualitative_book_quotes_retrieval_workflow_app()
 qualitative_answer_workflow_app = create_qualitative_answer_workflow_app()
-de_anonymize_plan_chain = create_deanonymize_plan_chain()
+# de_anonymize_plan_chain = create_deanonymize_plan_chain()
 planner = create_plan_chain()
 break_down_plan_chain = create_break_down_plan_chain()
 replanner = create_replanner_chain()
-anonymize_question_chain = create_anonymize_question_chain()
+# anonymize_question_chain = create_anonymize_question_chain()
 can_be_answered_already_chain = create_can_be_answered_already_chain()
 
 
@@ -866,8 +866,8 @@ def retrieve_or_answer(state: PlanExecute):
         return "chosen_tool_is_retrieve_chunks"
     elif state["tool"] == "retrieve_summaries":
         return "chosen_tool_is_retrieve_summaries"
-    elif state["tool"] == "retrieve_quotes":
-        return "chosen_tool_is_retrieve_quotes"
+    # elif state["tool"] == "retrieve_quotes":
+    #     return "chosen_tool_is_retrieve_quotes"
     elif state["tool"] == "answer":
         return "chosen_tool_is_answer"
     else:
@@ -983,45 +983,45 @@ def run_qualtative_answer_workflow_for_final_answer(state):
     return state
 
 
-def anonymize_queries(state: PlanExecute):
-    """
-    Anonymizes the question.
-    Args:
-        state: The current state of the plan execution.
-    Returns:
-        The updated state with the anonymized question and mapping.
-    """
-    state["curr_state"] = "anonymize_question"
-    print("state['question']: ", state['question'])
-    print("Anonymizing question")
-    pprint("--------------------")
-    input_values = {"question": state['question']}
-    anonymized_question_output = anonymize_question_chain.invoke(input_values)
-    print(f'anonymized_question_output: {anonymized_question_output}')
-    anonymized_question = anonymized_question_output["anonymized_question"]
-    print(f'anonimized_querry: {anonymized_question}')
-    pprint("--------------------")
-    mapping = anonymized_question_output["mapping"]
-    state["anonymized_question"] = anonymized_question
-    state["mapping"] = mapping
-    return state
+# def anonymize_queries(state: PlanExecute):
+#     """
+#     Anonymizes the question.
+#     Args:
+#         state: The current state of the plan execution.
+#     Returns:
+#         The updated state with the anonymized question and mapping.
+#     """
+#     state["curr_state"] = "anonymize_question"
+#     print("state['question']: ", state['question'])
+#     print("Anonymizing question")
+#     pprint("--------------------")
+#     input_values = {"question": state['question']}
+#     anonymized_question_output = anonymize_question_chain.invoke(input_values)
+#     print(f'anonymized_question_output: {anonymized_question_output}')
+#     anonymized_question = anonymized_question_output["anonymized_question"]
+#     print(f'anonimized_querry: {anonymized_question}')
+#     pprint("--------------------")
+#     mapping = anonymized_question_output["mapping"]
+#     state["anonymized_question"] = anonymized_question
+#     state["mapping"] = mapping
+#     return state
 
 
-def deanonymize_queries(state: PlanExecute):
-    """
-    De-anonymizes the plan.
-    Args:
-        state: The current state of the plan execution.
-    Returns:
-        The updated state with the de-anonymized plan.
-    """
-    state["curr_state"] = "de_anonymize_plan"
-    print("De-anonymizing plan")
-    pprint("--------------------")
-    deanonimzed_plan = de_anonymize_plan_chain.invoke({"plan": state["plan"], "mapping": state["mapping"]})
-    state["plan"] = deanonimzed_plan.plan
-    print(f'de-anonimized_plan: {deanonimzed_plan.plan}')
-    return state
+# def deanonymize_queries(state: PlanExecute):
+#     """
+#     De-anonymizes the plan.
+#     Args:
+#         state: The current state of the plan execution.
+#     Returns:
+#         The updated state with the de-anonymized plan.
+#     """
+#     state["curr_state"] = "de_anonymize_plan"
+#     print("De-anonymizing plan")
+#     pprint("--------------------")
+#     deanonimzed_plan = de_anonymize_plan_chain.invoke({"plan": state["plan"], "mapping": state["mapping"]})
+#     state["plan"] = deanonimzed_plan.plan
+#     print(f'de-anonimized_plan: {deanonimzed_plan.plan}')
+#     return state
 
 
 def plan_step(state: PlanExecute):
@@ -1035,7 +1035,7 @@ def plan_step(state: PlanExecute):
     state["curr_state"] = "planner"
     print("Planning step")
     pprint("--------------------")
-    plan = planner.invoke({"question": state['anonymized_question']})
+    plan = planner.invoke({"question": state['question']})
     state["plan"] = plan.steps
     print(f'plan: {state["plan"]}')
     return state
@@ -1109,7 +1109,7 @@ def create_agent():
     agent_workflow = StateGraph(PlanExecute)
 
     # Add the anonymize node
-    agent_workflow.add_node("anonymize_question", anonymize_queries)
+    # agent_workflow.add_node("anonymize_question", anonymize_queries)
 
     # Add the plan node
     agent_workflow.add_node("planner", plan_step)
@@ -1119,7 +1119,7 @@ def create_agent():
     agent_workflow.add_node("break_down_plan", break_down_plan_step)
 
     # Add the deanonymize node
-    agent_workflow.add_node("de_anonymize_plan", deanonymize_queries)
+    # agent_workflow.add_node("de_anonymize_plan", deanonymize_queries)
 
     # Add the qualitative chunks retrieval node
     agent_workflow.add_node("retrieve_chunks", run_qualitative_chunks_retrieval_workflow)
@@ -1128,7 +1128,7 @@ def create_agent():
     agent_workflow.add_node("retrieve_summaries", run_qualitative_summaries_retrieval_workflow)
 
     # Add the qualitative book quotes retrieval node
-    agent_workflow.add_node("retrieve_book_quotes", run_qualitative_book_quotes_retrieval_workflow)
+    # agent_workflow.add_node("retrieve_book_quotes", run_qualitative_book_quotes_retrieval_workflow)
 
 
     # Add the qualitative answer node
@@ -1144,31 +1144,34 @@ def create_agent():
     agent_workflow.add_node("get_final_answer", run_qualtative_answer_workflow_for_final_answer)
 
     # Set the entry point
-    agent_workflow.set_entry_point("anonymize_question")
+    # agent_workflow.set_entry_point("anonymize_question")
+    agent_workflow.set_entry_point("planner")
 
     # From anonymize we go to plan
-    agent_workflow.add_edge("anonymize_question", "planner")
+    # agent_workflow.add_edge("anonymize_question", "planner")
 
     # From plan we go to deanonymize
-    agent_workflow.add_edge("planner", "de_anonymize_plan")
+    # agent_workflow.add_edge("planner", "de_anonymize_plan")
 
     # From deanonymize we go to break down plan
 
-    agent_workflow.add_edge("de_anonymize_plan", "break_down_plan")
+    # agent_workflow.add_edge("de_anonymize_plan", "break_down_plan")
+    agent_workflow.add_edge("planner", "break_down_plan")
+
 
     # From break_down_plan we go to task handler
     agent_workflow.add_edge("break_down_plan", "task_handler")
 
     # From task handler we go to either retrieve or answer
     agent_workflow.add_conditional_edges("task_handler", retrieve_or_answer, {"chosen_tool_is_retrieve_chunks": "retrieve_chunks", "chosen_tool_is_retrieve_summaries":
-                                                                            "retrieve_summaries", "chosen_tool_is_retrieve_quotes": "retrieve_book_quotes", "chosen_tool_is_answer": "answer"})
+                                                                            "retrieve_summaries",  "chosen_tool_is_answer": "answer"})
 
     # After retrieving we go to replan
     agent_workflow.add_edge("retrieve_chunks", "replan")
 
     agent_workflow.add_edge("retrieve_summaries", "replan")
 
-    agent_workflow.add_edge("retrieve_book_quotes", "replan")
+    # agent_workflow.add_edge("retrieve_book_quotes", "replan")
 
     # After answering we go to replan
     agent_workflow.add_edge("answer", "replan")

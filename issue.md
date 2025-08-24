@@ -1,3 +1,40 @@
+# function_for_pipeline最终修改
+## 图层级
+删掉了匿名化、去匿名化的节点
+删掉了
+```py
+agent_workflow.add_conditional_edges("task_handler", retrieve_or_answer, {"chosen_tool_is_retrieve_chunks": "retrieve_chunks", "chosen_tool_is_retrieve_summaries":"retrieve_summaries",  "chosen_tool_is_answer": "answer"})
+```
+中chosen_tool_is_book_quote的部分
+删掉了retrieve_or_answer中
+```py
+    elif state["tool"] == "retrieve_quotes":
+      return "chosen_tool_is_retrieve_quotes"
+```
+这部分
+### 图状态
+```py
+class PlanExecute(TypedDict):
+    curr_state: str
+    question: str
+    anonymized_question: str
+    query_to_retrieve_or_answer: str
+    plan: List[str]
+    past_steps: List[str]
+    mapping: dict
+    curr_context: str
+    aggregated_context: str
+    tool: str
+    response: str
+```
+## Prompt
+去掉了break_down_plan_prompt提示词中的关于工具3的描述(书籍quote)
+去掉了tasks_handler_prompt_template中关于book_quote的描述:
+Tool C: a tool that retrieves relevant information from a vector store of quotes from the book based on a given query.
+    - use Tool C when you think the current task should search for information in the book quotes.
+
+## 函数
+删除了anonymize_queries与deanonymize_queries函数
 # 常见指令
 tree /f   -- 查看项目的结构
 ---
