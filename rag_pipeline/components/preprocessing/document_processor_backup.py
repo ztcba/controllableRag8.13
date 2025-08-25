@@ -411,96 +411,24 @@ class DocumentProcessor:
             return []
         
         logger.info(f"找到 {len(pdf_files)} 个PDF文件")
-        output_dir.mkdir(parents=True, exist_ok=True)
         
         results = []
-        filename_mapping = {}
         
         # 串行处理（避免OpenAI API并发限制）
         for pdf_path in tqdm(pdf_files, desc="处理PDF文件"):
             try:
-                # 1. 创建安全文件名
-                import hashlib
-                safe_name = hashlib.md5(pdf_path.stem.encode('utf-8')).hexdigest()
-                filename_mapping[safe_name] = pdf_path.name
-                
-                # 2. 记录开始处理
-                logger.info(f"开始处理文档: {pdf_path.name} (安全名: {safe_name})")
-                
-                # 3. 加载PDF
-                documents = self._load_pdf_with_langchain(pdf_path)
-                
-                # 4. 提取元数据 - 保留原始文件名
-                full_text = "\n".join([doc.page_content for doc in documents])
-                document_metadata = self._extract_metadata(pdf_path, full_text)
-                
-                # 5. 创建文档块
-                chunks = self._create_chunks(documents, document_metadata)
-                
-                # 6. 创建向量存储
-                vector_store = self._create_vector_store(chunks)
-                
-                # 7. 创建BM25索引
-                bm25_index = self._create_bm25_index(chunks)
-                
-                # 8. 保存结果 - 使用安全文件名
-                vector_store_path = output_dir / f"{safe_name}_faiss"
-                vector_store_path.mkdir(parents=True, exist_ok=True)
-                vector_store.save_local(str(vector_store_path))
-                
-                bm25_path = output_dir / f"{safe_name}_bm25.pkl"
-                with open(bm25_path, 'wb') as f:
-                    pickle.dump(bm25_index, f)
-                
-                # 9. 保存元数据
-                if self.config.save_intermediate_files:
-                    metadata_path = output_dir / f"{safe_name}_metadata.json"
-                    with open(metadata_path, 'w', encoding='utf-8') as f:
-                        json.dump({
-                            'document_metadata': document_metadata,
-                            'original_filename': pdf_path.name,
-                            'safe_filename': safe_name,
-                            'chunks_info': [
-                                {
-                                    'chunk_id': chunk.metadata.get('chunk_id'),
-                                    'chunk_size': chunk.metadata.get('chunk_size'),
-                                    'chunk_tokens': chunk.metadata.get('chunk_tokens'),
-                                    'content_preview': chunk.page_content[:200] + "..." if len(chunk.page_content) > 200 else chunk.page_content
-                                }
-                                for chunk in chunks
-                            ]
-                        }, f, ensure_ascii=False, indent=2)
-                
-                # 10. 添加处理结果
-                result = {
-                    'pdf_path': str(pdf_path),
-                    'original_filename': pdf_path.name,
-                    'safe_filename': safe_name,
-                    'vector_store_path': str(vector_store_path),
-                    'bm25_path': str(bm25_path),
-                    'chunks_count': len(chunks),
-                    'document_metadata': document_metadata
-                }
-                
+                result = self.process_single_document(pdf_path, output_dir)
                 results.append(result)
-                logger.info(f"文档处理完成: {pdf_path.name}")
-                
             except Exception as e:
                 logger.error(f"处理文件 {pdf_path.name} 时出错: {e}")
                 continue
         
-        # 11. 保存文件名映射表
-        mapping_path = output_dir / "filename_mapping.json"
-        with open(mapping_path, 'w', encoding='utf-8') as f:
-            json.dump(filename_mapping, f, ensure_ascii=False, indent=2)
-        
-        # 12. 保存批处理结果摘要
+        # 保存批处理结果摘要
         summary_path = output_dir / "processing_summary.json"
         with open(summary_path, 'w', encoding='utf-8') as f:
             json.dump({
                 'processed_files': len(results),
                 'total_files': len(pdf_files),
-                'filename_mapping': filename_mapping,  # 包含文件名映射
                 'results': results,
                 'config': {
                     'chunk_size': self.config.chunk_size,

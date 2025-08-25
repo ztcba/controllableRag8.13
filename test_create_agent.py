@@ -123,7 +123,7 @@ def test_agent_simple_question(agent):
     
     try:
         # 简单的测试问题
-        test_question = "日本与中国生育政策有什么不同？"
+        test_question = "中国生育保险参保情况如何？"
         
         print(f"   测试问题: {test_question}")
         print("   正在运行 agent...")

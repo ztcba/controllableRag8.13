@@ -1,0 +1,102 @@
+{
+  "processed_files": 4,
+  "total_files": 4,
+  "filename_mapping": {
+    "6d02516e13bf7835270364c333e2899f": "2024 年度国家自然科学基金项目指南（上册）.pdf",
+    "b7ecf390011469b273ffdbfdc8d03c0e": "2025 同济大学 国家自然科学基金2025年申请注意事项-1-23.pdf",
+    "f7cec10dece9eecb0120e09350eee919": "2025 年度国家自然科学基金项目指南（上册）.pdf",
+    "3c2ffce82ec9a4259b6dc4332cfe6896": "2025中国博士后科学基金资助指南.pdf"
+  },
+  "results": [
+    {
+      "pdf_path": "data\\pdfs\\2024 年度国家自然科学基金项目指南（上册）.pdf",
+      "original_filename": "2024 年度国家自然科学基金项目指南（上册）.pdf",
+      "safe_filename": "6d02516e13bf7835270364c333e2899f",
+      "vector_store_path": "output\\processed_documents\\6d02516e13bf7835270364c333e2899f_faiss",
+      "bm25_path": "output\\processed_documents\\6d02516e13bf7835270364c333e2899f_bm25.pkl",
+      "chunks_count": 32,
+      "document_metadata": {
+        "filename": "2024 年度国家自然科学基金项目指南（上册）.pdf",
+        "file_path": "data\\pdfs\\2024 年度国家自然科学基金项目指南（上册）.pdf",
+        "file_size": 933741,
+        "total_characters": 13783,
+        "total_tokens": 9395,
+        "processing_config": {
+          "chunk_size": 400,
+          "chunk_overlap": 60,
+          "embedding_model": "text-embedding-3-large"
+        },
+        "ai_analysis": "```json\n{\n  \"文档类型\": \"申请指南\",\n  \"主要主题\": \"国家自然科学基金项目申请规定\",\n  \"文档语言\": \"中文\",\n  \"是否包含表格、列表或结构化信息\": \"是\"\n}\n```"
+      }
+    },
+    {
+      "pdf_path": "data\\pdfs\\2025 同济大学 国家自然科学基金2025年申请注意事项-1-23.pdf",
+      "original_filename": "2025 同济大学 国家自然科学基金2025年申请注意事项-1-23.pdf",
+      "safe_filename": "b7ecf390011469b273ffdbfdc8d03c0e",
+      "vector_store_path": "output\\processed_documents\\b7ecf390011469b273ffdbfdc8d03c0e_faiss",
+      "bm25_path": "output\\processed_documents\\b7ecf390011469b273ffdbfdc8d03c0e_bm25.pkl",
+      "chunks_count": 24,
+      "document_metadata": {
+        "filename": "2025 同济大学 国家自然科学基金2025年申请注意事项-1-23.pdf",
+        "file_path": "data\\pdfs\\2025 同济大学 国家自然科学基金2025年申请注意事项-1-23.pdf",
+        "file_size": 832853,
+        "total_characters": 9091,
+        "total_tokens": 6350,
+        "processing_config": {
+          "chunk_size": 400,
+          "chunk_overlap": 60,
+          "embedding_model": "text-embedding-3-large"
+        },
+        "ai_analysis": "```json\n{\n  \"文档类型\": \"申请指南\",\n  \"主要主题\": \"国家自然科学基金2025年申请注意事项\",\n  \"文档语言\": \"中文\",\n  \"是否包含表格、列表或结构化信息\": true\n}\n```"
+      }
+    },
+    {
+      "pdf_path": "data\\pdfs\\2025 年度国家自然科学基金项目指南（上册）.pdf",
+      "original_filename": "2025 年度国家自然科学基金项目指南（上册）.pdf",
+      "safe_filename": "f7cec10dece9eecb0120e09350eee919",
+      "vector_store_path": "output\\processed_documents\\f7cec10dece9eecb0120e09350eee919_faiss",
+      "bm25_path": "output\\processed_documents\\f7cec10dece9eecb0120e09350eee919_bm25.pkl",
+      "chunks_count": 36,
+      "document_metadata": {
+        "filename": "2025 年度国家自然科学基金项目指南（上册）.pdf",
+        "file_path": "data\\pdfs\\2025 年度国家自然科学基金项目指南（上册）.pdf",
+        "file_size": 1321568,
+        "total_characters": 14827,
+        "total_tokens": 10120,
+        "processing_config": {
+          "chunk_size": 400,
+          "chunk_overlap": 60,
+          "embedding_model": "text-embedding-3-large"
+        },
+        "ai_analysis": "```json\n{\n  \"文档类型\": \"申请指南\",\n  \"主要主题\": \"国家自然科学基金项目申请规定\",\n  \"文档语言\": \"中文\",\n  \"是否包含表格、列表或结构化信息\": \"是\"\n}\n```"
+      }
+    },
+    {
+      "pdf_path": "data\\pdfs\\2025中国博士后科学基金资助指南.pdf",
+      "original_filename": "2025中国博士后科学基金资助指南.pdf",
+      "safe_filename": "3c2ffce82ec9a4259b6dc4332cfe6896",
+      "vector_store_path": "output\\processed_documents\\3c2ffce82ec9a4259b6dc4332cfe6896_faiss",
+      "bm25_path": "output\\processed_documents\\3c2ffce82ec9a4259b6dc4332cfe6896_bm25.pkl",
+      "chunks_count": 53,
+      "document_metadata": {
+        "filename": "2025中国博士后科学基金资助指南.pdf",
+        "file_path": "data\\pdfs\\2025中国博士后科学基金资助指南.pdf",
+        "file_size": 720447,
+        "total_characters": 24398,
+        "total_tokens": 16646,
+        "processing_config": {
+          "chunk_size": 400,
+          "chunk_overlap": 60,
+          "embedding_model": "text-embedding-3-large"
+        },
+        "ai_analysis": "```json\n{\n  \"文档类型\": \"资助指南\",\n  \"主要主题\": \"中国博士后科学基金资助\",\n  \"文档语言\": \"中文\",\n  \"是否包含表格、列表或结构化信息\": true\n}\n```"
+      }
+    }
+  ],
+  "config": {
+    "chunk_size": 400,
+    "chunk_overlap": 60,
+    "embedding_model": "text-embedding-3-large",
+    "enable_parent_document": true
+  }
+}
