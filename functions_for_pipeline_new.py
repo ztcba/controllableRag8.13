@@ -50,7 +50,40 @@ def create_retrievers():
 
 chunks_query_retriever, chapter_summaries_query_retriever, book_quotes_query_retriever = create_retrievers()
 
+def retrieve_context_per_question(state):
+    """
+    Retrieves relevant context for a given question. The context is retrieved from the book chunks and chapter summaries.
 
+    Args:
+        state: A dictionary containing the question to answer.
+    """
+    # Retrieve relevant documents
+    print("Retrieving relevant chunks...")
+    question = state["question"]
+    docs = chunks_query_retriever.get_relevant_documents(question)
+
+    # Concatenate document content
+    context = " ".join(doc.page_content for doc in docs)
+
+
+
+    print("Retrieving relevant chapter summaries...")
+    docs_summaries = chapter_summaries_query_retriever.get_relevant_documents(state["question"])
+
+    # Concatenate chapter summaries with citation information
+    context_summaries = " ".join(
+        f"{doc.page_content} (Chapter {doc.metadata['chapter']})" for doc in docs_summaries
+    )
+
+    print("Retrieving relevant book quotes...")
+    docs_book_quotes = book_quotes_query_retriever.get_relevant_documents(state["question"])
+    book_qoutes = " ".join(doc.page_content for doc in docs_book_quotes)
+
+
+    all_contexts = context + context_summaries + book_qoutes
+    all_contexts = escape_quotes(all_contexts)
+
+    return {"context": all_contexts, "question": question}
 
 
 def create_keep_only_relevant_content_chain():
@@ -352,40 +385,47 @@ def is_distilled_content_grounded_on_content(state):
         return "not grounded on the original context"
     
 
-def retrieve_context(state):
+def retrieve_chunks_context_per_question(state):
     """
-    使用统一的混合检索器为给定的问题检索相关上下文。
-    
-    Args:
-        state: 包含待回答问题的字典。
-        
-    Returns:
-        更新后的状态，包含检索到的上下文。
-    """
-    logger.info("--- Executing Unified Retrieval Node ---")
-    question = state["question"]
-    
-    logger.info(f"Retrieving relevant documents for question: '{question}'")
-    # 使用我们在上一步创建的全局 unified_retriever
-    docs = unified_retriever.get_relevant_documents(question)
+    Retrieves relevant context for a given question. The context is retrieved from the book chunks and chapter summaries.
 
-    # 从检索到的文档中构建上下文字符串
-    # 为了代码的健壮性，我们检查元数据是否存在
-    context_parts = []
-    for doc in docs:
-        content = doc.page_content
-        if 'chapter' in doc.metadata:
-            content += f" (Chapter {doc.metadata['chapter']})"
-        context_parts.append(content)
-        
-    context = " ".join(context_parts)
-    
-    # 使用您已有的辅助函数来处理引号
+    Args:
+        state: A dictionary containing the question to answer.
+    """
+    # Retrieve relevant documents
+    print("Retrieving relevant chunks...")
+    question = state["question"]
+    docs = chunks_query_retriever.get_relevant_documents(question)
+
+    # Concatenate document content
+    context = " ".join(doc.page_content for doc in docs)
     context = escape_quotes(context)
-    
-    logger.info("Context retrieval complete.")
-    
     return {"context": context, "question": question}
+
+def retrieve_summaries_context_per_question(state):
+
+    print("Retrieving relevant chapter summaries...")
+    question = state["question"]
+
+    docs_summaries = chapter_summaries_query_retriever.get_relevant_documents(state["question"])
+
+    # Concatenate chapter summaries with citation information
+    context_summaries = " ".join(
+        f"{doc.page_content} (Chapter {doc.metadata['chapter']})" for doc in docs_summaries
+    )
+    context_summaries = escape_quotes(context_summaries)
+    return {"context": context_summaries, "question": question}
+
+def retrieve_book_quotes_context_per_question(state):
+    question = state["question"]
+
+    print("Retrieving relevant book quotes...")
+    docs_book_quotes = book_quotes_query_retriever.get_relevant_documents(state["question"])
+    book_qoutes = " ".join(doc.page_content for doc in docs_book_quotes)
+    book_qoutes_context = escape_quotes(book_qoutes)
+
+    return {"context": book_qoutes_context, "question": question}
+
 
 
 class QualitativeRetrievalGraphState(TypedDict):
@@ -526,11 +566,9 @@ def create_qualitative_answer_workflow_app():
 class PlanExecute(TypedDict):
     curr_state: str
     question: str
-    # anonymized_question: str
     query_to_retrieve_or_answer: str
     plan: List[str]
     past_steps: List[str]
-    # mapping: dict
     curr_context: str
     aggregated_context: str
     tool: str
@@ -590,13 +628,6 @@ def create_break_down_plan_chain():
     return break_down_plan_chain
 
 def create_replanner_chain():
-    # class ActPossibleResults(BaseModel):
-    #     """Possible results of the action."""
-    #     plan: Plan = Field(description="Plan to follow in future.")
-    #     explanation: str = Field(description="Explanation of the action.")
-        
-
-    # act_possible_results_parser = JsonOutputParser(pydantic_object=ActPossibleResults)
 
     replanner_prompt_template =""" For the given objective, come up with a simple step by step plan of how to figure out the answer. 
     This plan should involve individual tasks, that if executed correctly will yield the correct answer. Do not add any superfluous steps. 
@@ -637,90 +668,42 @@ def create_replanner_chain():
     return replanner
 
 def create_task_handler_chain():
-    # 【修改提示词】
-    tasks_handler_prompt_template = """You are a task handler that receives a task {curr_task} and have to decide which tool to use to execute it.
+    tasks_handler_prompt_template = """You are a task handler that receives a task {curr_task} and have to decide with tool to use to execute the task.
     You have the following tools at your disposal:
-    - Tool 'retriever': A powerful tool that searches through a comprehensive knowledge base (including book chunks, summaries, and quotes) to find relevant information. Use this when you need to find new information or gather context to complete the task.
-    - Tool 'answer_from_context': An answering tool that generates a response based ONLY on the aggregated context {aggregated_context} you already have. Use this ONLY when you are confident that the current task can be fully answered with the information already gathered.
+    Tool A: a tool that retrieves relevant information from a vector store of book chunks based on a given query.
+    - use Tool A when you think the current task should search for information in the book chunks.
+    Tool B: a tool that retrieves relevant information from a vector store of chapter summaries based on a given query.
+    - use Tool B when you think the current task should search for information in the chapter summaries.
+    Tool C: a tool that answers a question from a given context.
+    - use Tool C ONLY when you the current task can be answered by the aggregated context {aggregated_context}
 
-    You also have access to the initial user's question '{question}' and the list of past steps '{past_steps}' to help you understand the context of the task.
+    you also receive the last tool used {last_tool}
+    if {last_tool} was retrieve_chunks, use other tools than Tool A.
 
-    Based on the current task, decide which tool to use. Output the query for the chosen tool and the tool's name.
+    You also have the past steps {past_steps} that you can use to make decisions and understand the context of the task.
+    You also have the initial user's question {question} that you can use to make decisions and understand the context of the task.
+    if you decide to use Tools A,B or C, output the query to be used for the tool and also output the relevant tool.
+    if you decide to use Tool D, output the question to be used for the tool, the context, and also that the tool to be used is Tool D.
+
     """
 
     class TaskHandlerOutput(BaseModel):
         """Output schema for the task handler."""
-        query: str = Field(description="The query to be used by the tool. This could be a search query for the retriever or a question for the answering tool.")
-        tool: str = Field(description="The tool to be used, which must be either 'retriever' or 'answer_from_context'.")
-        # 【移除 curr_context 字段】我们让 answer_from_context 工具默认使用 aggregated_context
-        # curr_context: str = Field(description="The context to be based on in order to answer the query.")
+        query: str = Field(description="The query to be either retrieved from the vector store, or the question that should be answered from context.")
+        curr_context: str = Field(description="The context to be based on in order to answer the query.")
+        tool: str = Field(description="The tool to be used should be either retrieve_chunks, retrieve_summaries, retrieve_quotes, or answer_from_context.")
 
 
     task_handler_prompt = PromptTemplate(
         template=tasks_handler_prompt_template,
-        # 【简化 input_variables】
-        input_variables=["curr_task", "aggregated_context", "past_steps", "question"],
+        input_variables=["curr_task", "aggregated_context", "last_tool" "past_steps", "question"],
     )
 
     task_handler_llm = get_chat_model()
-    # 【修改 Pydantic 模型】
-    task_handler_chain = task_handler_prompt | task_handler_llm.    
+    task_handler_chain = task_handler_prompt | task_handler_llm.with_structured_output(TaskHandlerOutput)
     return task_handler_chain
 
-# def create_anonymize_question_chain():
-#     class AnonymizeQuestion(BaseModel):
-#         """Anonymized question and mapping."""
-#         anonymized_question : str = Field(description="Anonymized question.")
-#         mapping: dict = Field(description="Mapping of original name entities to variables.")
-#         explanation: str = Field(description="Explanation of the action.")
 
-#     anonymize_question_parser = JsonOutputParser(pydantic_object=AnonymizeQuestion)
-
-
-#     anonymize_question_prompt_template = """ You are a question anonymizer. The input You receive is a string containing several words that
-#     construct a question {question}. Your goal is to changes all name entities in the input to variables, and remember the mapping of the original name entities to the variables.
-#     ```example1:
-#             if the input is \"who is harry potter?\" the output should be \"who is X?\" and the mapping should be {{\"X\": \"harry potter\"}} ```
-#     ```example2:
-#             if the input is \"how did the bad guy played with the alex and rony?\"
-#             the output should be \"how did the X played with the Y and Z?\" and the mapping should be {{\"X\": \"bad guy\", \"Y\": \"alex\", \"Z\": \"rony\"}}```
-#     you must replace all name entities in the input with variables, and remember the mapping of the original name entities to the variables.
-#     output the anonymized question and the mapping as two separate fields in a json format as described here, without any additional text apart from the json format.
-#    """
-
-
-
-#     anonymize_question_prompt = PromptTemplate(
-#         template=anonymize_question_prompt_template,
-#         input_variables=["question"],
-#         partial_variables={"format_instructions": anonymize_question_parser.get_format_instructions()},
-#     )
-
-#     anonymize_question_llm = ChatOpenAI(temperature=0, model_name="gpt-4o", max_tokens=2000)
-#     anonymize_question_chain = anonymize_question_prompt | anonymize_question_llm | anonymize_question_parser
-#     return anonymize_question_chain
-
-
-# def create_deanonymize_plan_chain():
-#     class DeAnonymizePlan(BaseModel):
-#         """Possible results of the action."""
-#         plan: List = Field(description="Plan to follow in future. with all the variables replaced with the mapped words.")
-
-
-#     de_anonymize_plan_prompt_template = """ you receive a list of tasks: {plan}, where some of the words are replaced with mapped variables. you also receive
-#     the mapping for those variables to words {mapping}. replace all the variables in the list of tasks with the mapped words. if no variables are present,
-#     return the original list of tasks. in any case, just output the updated list of tasks in a json format as described here, without any additional text apart from the
-#     """
-
-
-#     de_anonymize_plan_prompt = PromptTemplate(
-#         template=de_anonymize_plan_prompt_template,
-#         input_variables=["plan", "mapping"],
-#     )
-
-#     de_anonymize_plan_llm = ChatOpenAI(temperature=0, model_name="gpt-4o", max_tokens=2000)
-#     de_anonymize_plan_chain = de_anonymize_plan_prompt | de_anonymize_plan_llm.with_structured_output(DeAnonymizePlan)
-#     return de_anonymize_plan_chain
 
 def create_can_be_answered_already_chain():
     class CanBeAnsweredAlready(BaseModel):
@@ -871,7 +854,28 @@ def run_qualitative_summaries_retrieval_workflow(state):
         state["aggregated_context"] = ""
     state["aggregated_context"] += output['relevant_context']
     return state
- 
+
+def run_qualitative_book_quotes_retrieval_workflow(state):
+    """
+    Run the qualitative book quotes retrieval workflow.
+    Args:
+        state: The current state of the plan execution.
+    Returns:
+        The state with the updated aggregated context.
+    """
+    state["curr_state"] = "retrieve_book_quotes"
+    print("Running the qualitative book quotes retrieval workflow...")
+    question = state["query_to_retrieve_or_answer"]
+    inputs = {"question": question}
+    for output in qualitative_book_quotes_retrieval_workflow_app.stream(inputs):
+        for _, _ in output.items():
+            pass 
+        pprint("--------------------")
+    if not state["aggregated_context"]:
+        state["aggregated_context"] = ""
+    state["aggregated_context"] += output['relevant_context']
+    return state
+   
 
 
 def run_qualtative_answer_workflow(state):
@@ -916,46 +920,6 @@ def run_qualtative_answer_workflow_for_final_answer(state):
     state["response"] = value
     return state
 
-
-# def anonymize_queries(state: PlanExecute):
-#     """
-#     Anonymizes the question.
-#     Args:
-#         state: The current state of the plan execution.
-#     Returns:
-#         The updated state with the anonymized question and mapping.
-#     """
-#     state["curr_state"] = "anonymize_question"
-#     print("state['question']: ", state['question'])
-#     print("Anonymizing question")
-#     pprint("--------------------")
-#     input_values = {"question": state['question']}
-#     anonymized_question_output = anonymize_question_chain.invoke(input_values)
-#     print(f'anonymized_question_output: {anonymized_question_output}')
-#     anonymized_question = anonymized_question_output["anonymized_question"]
-#     print(f'anonimized_querry: {anonymized_question}')
-#     pprint("--------------------")
-#     mapping = anonymized_question_output["mapping"]
-#     state["anonymized_question"] = anonymized_question
-#     state["mapping"] = mapping
-#     return state
-
-
-# def deanonymize_queries(state: PlanExecute):
-#     """
-#     De-anonymizes the plan.
-#     Args:
-#         state: The current state of the plan execution.
-#     Returns:
-#         The updated state with the de-anonymized plan.
-#     """
-#     state["curr_state"] = "de_anonymize_plan"
-#     print("De-anonymizing plan")
-#     pprint("--------------------")
-#     deanonimzed_plan = de_anonymize_plan_chain.invoke({"plan": state["plan"], "mapping": state["mapping"]})
-#     state["plan"] = deanonimzed_plan.plan
-#     print(f'de-anonimized_plan: {deanonimzed_plan.plan}')
-#     return state
 
 
 def plan_step(state: PlanExecute):
@@ -1042,8 +1006,6 @@ def create_agent():
     
     agent_workflow = StateGraph(PlanExecute)
 
-    # Add the anonymize node
-    # agent_workflow.add_node("anonymize_question", anonymize_queries)
 
     # Add the plan node
     agent_workflow.add_node("planner", plan_step)
@@ -1052,18 +1014,12 @@ def create_agent():
 
     agent_workflow.add_node("break_down_plan", break_down_plan_step)
 
-    # Add the deanonymize node
-    # agent_workflow.add_node("de_anonymize_plan", deanonymize_queries)
 
     # Add the qualitative chunks retrieval node
     agent_workflow.add_node("retrieve_chunks", run_qualitative_chunks_retrieval_workflow)
 
     # Add the qualitative summaries retrieval node
     agent_workflow.add_node("retrieve_summaries", run_qualitative_summaries_retrieval_workflow)
-
-    # Add the qualitative book quotes retrieval node
-    # agent_workflow.add_node("retrieve_book_quotes", run_qualitative_book_quotes_retrieval_workflow)
-
 
     # Add the qualitative answer node
     agent_workflow.add_node("answer", run_qualtative_answer_workflow)
@@ -1078,18 +1034,9 @@ def create_agent():
     agent_workflow.add_node("get_final_answer", run_qualtative_answer_workflow_for_final_answer)
 
     # Set the entry point
-    # agent_workflow.set_entry_point("anonymize_question")
     agent_workflow.set_entry_point("planner")
 
-    # From anonymize we go to plan
-    # agent_workflow.add_edge("anonymize_question", "planner")
 
-    # From plan we go to deanonymize
-    # agent_workflow.add_edge("planner", "de_anonymize_plan")
-
-    # From deanonymize we go to break down plan
-
-    # agent_workflow.add_edge("de_anonymize_plan", "break_down_plan")
     agent_workflow.add_edge("planner", "break_down_plan")
 
 
@@ -1105,7 +1052,6 @@ def create_agent():
 
     agent_workflow.add_edge("retrieve_summaries", "replan")
 
-    # agent_workflow.add_edge("retrieve_book_quotes", "replan")
 
     # After answering we go to replan
     agent_workflow.add_edge("answer", "replan")

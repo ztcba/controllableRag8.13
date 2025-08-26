@@ -1,0 +1,7 @@
+loguru
+langchain
+langchain_community
+faiss-cpu
+pandas
+numpy
+markdown2
