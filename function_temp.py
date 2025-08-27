@@ -9,8 +9,11 @@ from langchain_core.pydantic_v1 import BaseModel, Field
 from rag_pipeline.components.llms import get_chat_model, get_embedding_model    # 【核心简化】
 
 from retriever_factory import create_hybrid_retriever
-
-
+# from langchain.retrievers.document_compressors import CrossEncoderRerank
+from langchain_community.cross_encoders import HuggingFaceCrossEncoder
+from langchain_core.documents import Document
+from pprint import pprint
+from rag_pipeline.components.rerankers import get_reranker_model
 # embedding_model = get_embedding_model()
 # retriever = create_hybrid_retriever()
 from langchain_core.output_parsers import JsonOutputParser
@@ -34,14 +37,14 @@ from helper_functions import escape_quotes, text_wrap
 # ========================================================================================
 
 class PlanExecute(TypedDict):
-    curr_state: str
-    question: str
-    query_to_retrieve_or_answer: str
-    plan: List[str]
-    past_steps: List[str]
-    curr_context: str
-    aggregated_context: str
-    tool: str
+    curr_state: str # current state of the plan execution
+    question: str # 用户提的问题
+    query_to_retrieve_or_answer: str 
+    plan: List[str] # 分解的计划
+    past_steps: List[str] # 过去的步骤
+    curr_context: str #
+    aggregated_context: str # 聚合的检索结果
+    tool: str # 使用何种工具(检索或回答)
     response: str
 
 
@@ -152,26 +155,22 @@ def break_down_plan_step(state: PlanExecute):
 
 
 def create_task_handler_chain():
-    tasks_handler_prompt_template = """You are a task handler that receives a task {curr_task} and have to decide with tool to use to execute the task.
-    You have the following tools at your disposal:
-    Tool A: a tool that retrieves relevant information from a vector store based on a given query.
-    - use Tool A when you think the current task should search for information in the vector store.
+
+    tasks_handler_prompt_template ="""You are a master task dispatcher. Your goal is to select the perfect tool to execute the current task: "{curr_task}". You must also formulate the precise input (query) for that tool.
+
+    You have access to the initial user question "{question}" and the work done so far "{past_steps}" for context.you also receive the last tool used {last_tool}
+
+    Here are your available tools:
+    - **`retrieve_chunks`**: Use this to search for factual information, definitions, rules, or specific data within the document library (e.g., "2025年度国家自然科学基金项目指南"，"2025年度国家自然科学基金项目指南","同济大学国家自然科学基金2025年申请注意事项"). This is your primary tool for information extraction from provided documents.
+    - **`answer_from_context`**: Use this ONLY when the plan explicitly states to synthesize, compare, or reason based on information already gathered in `aggregated_context`. The query should be a direct question to be answered from the context.
     
-    you also receive the last tool used {last_tool}
-
-
-    You also have the past steps {past_steps} that you can use to make decisions and understand the context of the task.
-    You also have the initial user's question {question} that you can use to make decisions and understand the context of the task.
-    if you decide to use Tools A, output the query to be used for the tool and also output the relevant tool.
-    if you decide to use Tool D, output the question to be used for the tool, the context, and also that the tool to be used is Tool D.
-
+    Based on the current task, select the best tool and generate the most effective query.
     """
-
     class TaskHandlerOutput(BaseModel):
         """Output schema for the task handler."""
         query: str = Field(description="The query to be either retrieved from the vector store, or the question that should be answered from context.")
         curr_context: str = Field(description="The context to be based on in order to answer the query.")
-        tool: str = Field(description="The tool to be used should be either retrieve_chunks, retrieve_summaries, retrieve_quotes, or answer_from_context.")
+        tool: str = Field(description="The tool to be used should be either retrieve_chunks or answer_from_context.")
 
 
     task_handler_prompt = PromptTemplate(
@@ -217,12 +216,22 @@ def run_task_handler_chain(state: PlanExecute):
     if output.tool == "retrieve_chunks":
         state["query_to_retrieve_or_answer"] = output.query
         state["tool"]="retrieve_chunks"
-    
-    
+       
     elif output.tool == "answer_from_context":
         state["query_to_retrieve_or_answer"] = output.query
         state["curr_context"] = output.curr_context
         state["tool"]="answer_from_context"
+
+    elif output.tool == "code_interpreter":
+        state["query_to_retrieve_or_answer"] = output.query
+        state["curr_context"] = output.curr_context
+        state["tool"]="code_interpreter"
+    
+    elif output.tool == "web_search":
+        state["query_to_retrieve_or_answer"] = output.query
+        state["curr_context"] = output.curr_context
+        state["tool"]="web_search"
+
     else:
         raise ValueError("Invalid tool was outputed. Must be either 'retrieve' or 'answer_from_context'")
     return state  
@@ -313,75 +322,96 @@ def replan_step(state: PlanExecute):
     return state
 
 # ========================================================================================
-# 检索
+# 检索、回答、上网查询、sqltotxt等工具
 # ========================================================================================
 
 
-
+# 检索工具
 from typing import TypedDict, List
 from pprint import pprint
 
 
 
-def run_qualitative_chunks_retrieval_workflow(state: PlanExecute):
+def run_qualitative_chunks_retrieval_workflow(state: dict) -> dict:
     """
-    运行定性检索工作流，现已简化为使用一个结合了检索和内容压缩的检索器。
+    (已集成) 运行定性检索工作流，采用“小块检索，大块重排”策略，
+    并使用自定义的 AiHubMixReranker。
     
     Args:
-        state: The current state of the plan execution.
+        state: The current state of the plan execution. 
+               (使用 dict 以便通用，实际应为 PlanExecute 类型)
         
     Returns:
         The state with the updated aggregated context.
     """
     
     # 维持状态更新逻辑 1: 更新当前状态
-    state["curr_state"] = "retrieve_chunks"
-    print("Running the unified chunk retrieval...")
+    state["curr_state"] = "retrieve_and_rerank"
+    print("🚀 Running the integrated retrieval workflow (Retrieve -> Expand -> Rerank)...")
     
     question = state["query_to_retrieve_or_answer"]
     
-    # 使用优化的检索器（这里我们先假设它能正确返回一个检索器实例）
-    retriever = create_hybrid_retriever()
+    # --- 流程开始 ---
     
-    print(f"Retriever type: {type(retriever)}") # 加上这句日志，方便调试
+    # 步骤一：检索 (Retrieve)
+    # 使用现有的混合检索器，它现在会在“子块”上进行检索
+    retriever = create_hybrid_retriever(bm25_k=20, vector_k=20) # 召回更多候选以供精排
+    print(f"1. 🔍 Retrieving child chunks for query: '{question}'")
+    child_chunks = retriever.invoke(question)
+    print(f"   ✅ Retrieved {len(child_chunks)} child chunks.")
 
-    # --- 修改开始 ---
-    # 直接、清晰地调用 invoke 方法
-    try:
-        print("🔍 Invoking retriever...")
-        # EnsembleRetriever 和其他标准检索器都有 .invoke() 方法
-        docs = retriever.invoke(question) 
-        print(f"✅ Retrieved {len(docs)} documents.")
+    # 步骤二：扩展 (Expand)
+    # 从子块的元数据中提取出父块，并去重
+    parent_chunks_map = {}
+    for chunk in child_chunks:
+        # 假设父块内容存储在 'parent_content' metadata 字段中
+        parent_content = chunk.metadata.get("parent_content")
+        if parent_content:
+            # 使用内容作为key，自动去重
+            parent_chunks_map[parent_content] = Document(page_content=parent_content, metadata=chunk.metadata)
+            
+    unique_parent_chunks = list(parent_chunks_map.values())
+    print(f"2. 🧱 Expanding to {len(unique_parent_chunks)} unique parent chunks.")
 
-        # 注意：如果您的 `create_hybrid_retriever` 返回的是我们第一段代码中的
-        # 预处理检索器，其 invoke 的返回格式可能是字典列表。
-        # 如果是标准的 EnsembleRetriever，返回的是 Document 列表。
-        # 这里需要做一个判断来兼容两种情况。
-        if docs and isinstance(docs[0], dict):
-            print("   (转换从字典格式到 Document 对象)")
-            from langchain_core.documents import Document
-            docs = [
-                Document(
-                    page_content=result.get('content', ''),
-                    metadata=result.get('metadata', {})
-                ) for result in docs
-            ]
+    if not unique_parent_chunks:
+        # 如果没有检索到任何内容，直接返回
+        print("   ⚠️ No unique parent chunks found. Skipping reranking.")
+        state["aggregated_context"] = ""
+        pprint("--------------------")
+        return state
 
-    except Exception as e:
-        print(f"❌ 检索失败: {e}")
-        # 在这里可以添加备用逻辑，或者直接返回空结果
-        docs = []
-    # --- 修改结束 ---
-
-    # 聚合文档内容
-    relevant_context = " ".join(doc.page_content for doc in docs)
+    # ========================= 【核心替换部分】 =========================
     
+    # 步骤三：重排 (Rerank)
+    # 使用新的 AiHubMixReranker 对父块进行重排序
+    print("3. ⚖️ Reranking parent chunks using AiHubMix Reranker...")
+    
+    # 1. 使用您的工厂函数实例化重排器，并设置返回 top 3 的文档
+    reranker = get_reranker_model(top_n=3) 
+    
+    # 2. 需要用transform_documents方法。
+
+    reranked_docs = reranker.transform_documents(
+        documents=unique_parent_chunks,
+        query=question
+    )
+    print(f"   ✅ Reranked and selected top {len(reranked_docs)} parent chunks via API.")
+    
+    # ====================================================================
+
+    # 步骤四：聚合 (Aggregate)
+    # 将重排后的高质量父块内容聚合为最终上下文
+    relevant_context = "\n\n---\n\n".join([doc.page_content for doc in reranked_docs])
+    
+    # --- 流程结束 ---
+
     # 维持状态更新逻辑 2: 更新聚合上下文
     if not state.get("aggregated_context"):
         state["aggregated_context"] = ""
         
     state["aggregated_context"] += relevant_context
     
+    print("4. ✨ Final context generated and aggregated.")
     pprint("--------------------")
     return state
 
@@ -397,48 +427,26 @@ def create_question_answer_from_context_cot_chain():
     question_answer_from_context_llm = get_chat_model()
 
 
-    question_answer_cot_prompt_template = """ 
-    Examples of Chain-of-Thought Reasoning
+    question_answer_cot_prompt_template ="""
+    You are an expert AI assistant. Your mission is to provide a final, high-quality answer to the user's question based *exclusively* on the provided context.
 
-    Example 1
+    **Instructions:**
 
-    Context: Mary is taller than Jane. Jane is shorter than Tom. Tom is the same height as David.
-    Question: Who is the tallest person?
-    Reasoning Chain:
-    The context tells us Mary is taller than Jane
-    It also says Jane is shorter than Tom
-    And Tom is the same height as David
-    So the order from tallest to shortest is: Mary, Tom/David, Jane
-    Therefore, Mary must be the tallest person
+    1.  Identify the User's Persona: Pay close attention to the user's specific role, identity, or situation described in the question (e.g., "an in-service doctoral candidate" ).
+    1.  **Review the Context**: Carefully read the entire provided context to understand all available information.
+    2.  **Identify Relevant Facts**: Pinpoint the specific sentences or data points within the context that directly address the user's question.
+    3.  **Synthesize the Answer**: Combine the relevant facts into a clear, concise, and comprehensive answer.
+    4.  **Strictly Adhere to Context**: DO NOT use any information outside of the provided text. If the context does not contain the answer, you must state that the information is not available.
 
-    Example 2
-    Context: Harry was reading a book about magic spells. One spell allowed the caster to turn a person into an animal for a short time. Another spell could levitate objects.
-    A third spell created a bright light at the end of the caster's wand.
-    Question: Based on the context, if Harry cast these spells, what could he do?
-    Reasoning Chain:
-    The context describes three different magic spells
-    The first spell allows turning a person into an animal temporarily
-    The second spell can levitate or float objects
-    The third spell creates a bright light
-    If Harry cast these spells, he could turn someone into an animal for a while, make objects float, and create a bright light source
-    So based on the context, if Harry cast these spells he could transform people, levitate things, and illuminate an area
-    Instructions.
-
-    Example 3 
-    Context: Harry Potter woke up on his birthday to find a present at the end of his bed. He excitedly opened it to reveal a Nimbus 2000 broomstick.
-    Question: Why did Harry receive a broomstick for his birthday?
-    Reasoning Chain:
-    The context states that Harry Potter woke up on his birthday and received a present - a Nimbus 2000 broomstick.
-    However, the context does not provide any information about why he received that specific present or who gave it to him.
-    There are no details about Harry's interests, hobbies, or the person who gifted him the broomstick.
-    Without any additional context about Harry's background or the gift-giver's motivations, there is no way to determine the reason he received a broomstick as a birthday present.
-
-    For the question below, provide your answer by first showing your step-by-step reasoning process, breaking down the problem into a chain of thought before arriving at the final answer,
-    just like in the previous examples.
-    Context
+    ---
+    **Provided Context:**
     {context}
-    Question
+    ---
+    **User's Question:**
     {question}
+    ---
+
+    Now, generate the final answer based on these instructions.
     """
 
     question_answer_from_context_cot_prompt = PromptTemplate(
@@ -658,7 +666,6 @@ def create_agent():
 
     agent_workflow.add_node("break_down_plan", break_down_plan_step)
 
-
     # Add the qualitative chunks retrieval node
     agent_workflow.add_node("retrieve", run_qualitative_chunks_retrieval_workflow)
 
@@ -677,15 +684,15 @@ def create_agent():
     # Set the entry point
     agent_workflow.set_entry_point("planner")
 
+    # 边的定义
 
     agent_workflow.add_edge("planner", "break_down_plan")
-
 
     # From break_down_plan we go to task handler
     agent_workflow.add_edge("break_down_plan", "task_handler")
 
     # From task handler we go to either retrieve or answer
-    agent_workflow.add_conditional_edges("task_handler", retrieve_or_answer, {"chosen_tool_is_retrieve_chunks": "retrieve", "chosen_tool_is_retrieve_summaries": "retrieve", "chosen_tool_is_answer": "answer"})
+    agent_workflow.add_conditional_edges("task_handler", retrieve_or_answer, {"chosen_tool_is_retrieve_chunks": "retrieve",  "chosen_tool_is_answer": "answer"})
 
     # After retrieving we go to replan
     agent_workflow.add_edge("retrieve", "replan")
