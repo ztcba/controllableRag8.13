@@ -2,7 +2,7 @@
 import os
 import sys
 from dotenv import load_dotenv
-
+from typing import Literal
 # 加载环境变量
 load_dotenv()
 
@@ -22,7 +22,7 @@ def test_create_agent():
         print(f"✅ 成功创建 agent，类型: {type(agent)}")
         
         # 测试一个简单的查询
-        test_query = "2025中国博士后科学基金“面上资助”项目专家评审时各项指标的权重分布如何？"
+        test_query = "一位同济大学的在职博士研究生，想申请2025年的国家自然科学基金青年科学基金项目，根据您所掌握的所有文件，他需要满足哪些主要申请条件，并需要提交什么特殊的附加材料？"
         print(f"🔍 测试查询: {test_query}")
         
         # 创建初始状态
@@ -35,7 +35,8 @@ def test_create_agent():
             "curr_context": "",
             "aggregated_context": "",
             "tool": "",
-            "response": ""
+            "response": "",
+            "rout": Literal["rout_is_retrieve", "rout_is_websearch", "rout_is_draw"]
         }
         
         print("📊 初始状态已创建")
@@ -44,7 +45,8 @@ def test_create_agent():
         # 执行 agent
         result = None
         step_count = 0
-        max_steps = 10  # 限制最大步数，避免无限循环
+        # max_steps = 10  # 限制最大步数，避免无限循环
+        max_steps = 15
         
         for output in agent.stream(initial_state):
             step_count += 1
@@ -57,10 +59,11 @@ def test_create_agent():
                     
                     # 显示一些关键信息
                     if 'plan' in value and value['plan']:
-                        print(f"计划步骤: {value['plan'][:2]}...")  # 只显示前两个步骤
+                        print(f"计划步骤: {value['plan']}")  # 只显示前两个步骤
                     if 'aggregated_context' in value and value['aggregated_context']:
+                        # context_preview = value['aggregated_context'][:200] + "..." if len(value['aggregated_context']) > 200 else value['aggregated_context']
                         context_preview = value['aggregated_context'][:200] + "..." if len(value['aggregated_context']) > 200 else value['aggregated_context']
-                        print(f"聚合上下文: {context_preview}")
+                        print(f"聚合上下文: {value['aggregated_context']}...")
                     if 'response' in value and value['response']:
                         print(f"响应: {value['response']}")
                         result = value['response']

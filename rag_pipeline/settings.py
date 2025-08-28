@@ -46,11 +46,14 @@ class Settings(BaseSettings):
     chat_model: str = Field(..., alias='CHAT_MODEL')
     planner_model: str = Field(..., alias='PLANNER_MODEL')
     embedding_model: str = Field(..., alias='EMBEDDING_MODEL')  # 默认embedding模型
-    
+    aihubmix_api_key: str  = Field(..., alias='AIHUBMIX_API_KEY')  # 【新增】AiHubMix API Key
     # LLM Provider Configuration
     llm_provider: str = Field(..., alias='LLM_PROVIDER')
     llm_base_url: str = Field(..., alias='LLM_BASE_URL')
 
+    # 【新增】重排模型配置
+    reranker_base_url: str = Field(..., alias='RERANKER_BASE_URL')
+    reranker_model: str = Field(..., alias='RERANKER_MODEL')
     # 3. Vector Store Paths (使用Path对象，更加健壮)
     # 我们让它从字符串加载，然后通过property转换为相对于项目根目录的绝对路径
     chunks_vector_store_path_str: str = Field("chunks_vector_store", alias='CHUNKS_VECTOR_STORE_PATH')

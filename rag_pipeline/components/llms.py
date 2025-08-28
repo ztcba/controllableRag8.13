@@ -27,7 +27,25 @@ def get_chat_model() -> ChatOpenAI:
         openai_api_key=settings.api_key,  # 明确使用openai_api_key参数
         openai_api_base=settings.llm_base_url  # 使用openai_api_base参数
     )
-
+def get_elite_model() -> ChatOpenAI:
+    """
+    Creates and returns a ChatOpenAI instance configured from settings.
+    
+    This function correctly handles pointing to any OpenAI-compatible API 
+    (like xiaocaseai) by using the base_url parameter, while retaining 
+    all advanced features like structured output.
+    """
+    
+    # 3. 始终使用 langchain_openai.ChatOpenAI。
+    #    通过 api_key 和 base_url 参数，将其指向你的第三方服务。
+    #    这样就能解决 with_structured_output 的 NotImplementedError。
+    return ChatOpenAI(
+        model=settings.chat_model,
+        temperature=settings.default_temperature,
+        max_tokens=settings.default_max_tokens,
+        openai_api_key=settings.api_key,  # 明确使用openai_api_key参数
+        openai_api_base=settings.llm_base_url  # 使用openai_api_base参数
+    )
 
 def get_planner_model() -> ChatOpenAI:
     """

@@ -195,7 +195,7 @@ def run_task_handler_chain(state: PlanExecute):
     """
     state["curr_state"] = "task_handler"
     print("the current plan is:")
-    print(state["plan"])
+    print(state["plan"][0])
     pprint("--------------------") 
 
     if not state['past_steps']:
@@ -398,40 +398,7 @@ def create_question_answer_from_context_cot_chain():
 
 
     question_answer_cot_prompt_template = """ 
-    Examples of Chain-of-Thought Reasoning
 
-    Example 1
-
-    Context: Mary is taller than Jane. Jane is shorter than Tom. Tom is the same height as David.
-    Question: Who is the tallest person?
-    Reasoning Chain:
-    The context tells us Mary is taller than Jane
-    It also says Jane is shorter than Tom
-    And Tom is the same height as David
-    So the order from tallest to shortest is: Mary, Tom/David, Jane
-    Therefore, Mary must be the tallest person
-
-    Example 2
-    Context: Harry was reading a book about magic spells. One spell allowed the caster to turn a person into an animal for a short time. Another spell could levitate objects.
-    A third spell created a bright light at the end of the caster's wand.
-    Question: Based on the context, if Harry cast these spells, what could he do?
-    Reasoning Chain:
-    The context describes three different magic spells
-    The first spell allows turning a person into an animal temporarily
-    The second spell can levitate or float objects
-    The third spell creates a bright light
-    If Harry cast these spells, he could turn someone into an animal for a while, make objects float, and create a bright light source
-    So based on the context, if Harry cast these spells he could transform people, levitate things, and illuminate an area
-    Instructions.
-
-    Example 3 
-    Context: Harry Potter woke up on his birthday to find a present at the end of his bed. He excitedly opened it to reveal a Nimbus 2000 broomstick.
-    Question: Why did Harry receive a broomstick for his birthday?
-    Reasoning Chain:
-    The context states that Harry Potter woke up on his birthday and received a present - a Nimbus 2000 broomstick.
-    However, the context does not provide any information about why he received that specific present or who gave it to him.
-    There are no details about Harry's interests, hobbies, or the person who gifted him the broomstick.
-    Without any additional context about Harry's background or the gift-giver's motivations, there is no way to determine the reason he received a broomstick as a birthday present.
 
     For the question below, provide your answer by first showing your step-by-step reasoning process, breaking down the problem into a chain of thought before arriving at the final answer,
     just like in the previous examples.

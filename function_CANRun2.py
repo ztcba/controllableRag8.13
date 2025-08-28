@@ -1,9 +1,10 @@
 # functions_for_pipeline.py
+# 调整过taskhandler的提示词的版本，在一些任务上表现不足
 from langchain_core.prompts import ChatPromptTemplate
 from langchain.prompts import PromptTemplate
 from langchain_core.pydantic_v1 import BaseModel, Field
 # Import LLM factory functions
-from rag_pipeline.components.llms import get_chat_model, get_embedding_model    # 【核心简化】
+from rag_pipeline.components.llms import get_chat_model, get_elite_model    # 【核心简化】
 
 from retriever_factory import create_hybrid_retriever
 # from langchain.retrievers.document_compressors import CrossEncoderRerank
@@ -66,6 +67,34 @@ def create_plan_chain():
     The result of the final step should be the final answer. Make sure that each step has all the information needed - do not skip steps.
 
     """
+    
+    
+#     """ # 角色：你是一位顶级的科研项目信息分析专家。
+
+# # 任务：
+# 为给定的用户问题 {question}，制定一个逻辑严谨、步骤清晰的**信息检索计划**。你的目标是将一个复杂的问题分解成一系列独立的、可执行的**信息获取子任务**。
+
+# # 指示与准则：
+# 1.  **识别核心实体**：精确识别问题中的所有关键信息点，例如：年份（如“2025年”）、机构名称（如“同济大学”）、文件名（如“项目指南”）、申请人身份（如“在职博士”、“高级职称”）、项目类型（如“青年科学基金”、“卓越研究群体”）等。
+# 2.  **分解检索任务**：基于识别出的实体和问题逻辑（如“对比”、“申请条件”、“区别”、“是否可以”），将原问题拆解成多个独立的检索步骤。
+# 3.  **明确信息目标**：每个步骤都必须清晰地说明需要“检索”或“查找”的**具体信息内容**。
+#     *   **反例 (不要这样做)**: “研究申请条件。”
+#     *   **正例 (请这样做)**: “查找2025年国家自然科学基金青年科学基金项目对申请人身份（如在职博士研究生）的具体要求。”
+# 4.  **体现逻辑依赖**：如果后续步骤需要利用前面步骤的检索结果，请在计划中清晰地体现出这种顺序。
+# 5.  **绝对专注检索**：你的输出**只能包含**信息检索的步骤。**严禁包含**任何关于“如何整合信息”、“进行逻辑判断”、“比较差异”或“生成最终答案”的步骤。整个计划的终点是“获取了所有必要的信息片段”，后续的加工由其他节点完成。
+
+# # 输出格式：
+# 请以有序列表的形式输出检索计划。
+
+# ---
+# # 示例：
+# ## 用户问题：
+# 对比2024年和2025年的国家自然科学基金项目指南，关于经费包干制的项目类型，2025年新增了哪两类？
+# ## 你的输出：
+# 1. 查找《2024年国家自然科学基金项目指南》中，关于“经费包干制”所覆盖的项目类型列表。
+# 2. 查找《2025年国家自然科学基金项目指南》中，关于“经费包干制”所覆盖的项目类型列表。
+
+#     """
 
     planner_prompt = PromptTemplate(
         template=planner_prompt,
@@ -107,7 +136,7 @@ def create_break_down_plan_chain():
     break_down_plan_prompt_template = """You receive a plan {plan} which contains a series of steps to follow in order to answer a query. 
     you need to go through the plan refine it according to this:
     1. every step has to be able to be executed by either:
-        i. retrieving relevant information from a vector store of document library
+        i. retrieving relevant information from a vector store of book chunks
         ii. answering a question from a given context.
     2. every step should contain all the information needed to execute it.
 
@@ -119,7 +148,7 @@ def create_break_down_plan_chain():
         input_variables=["plan"],
     )
 
-    break_down_plan_llm = get_chat_model()
+    break_down_plan_llm = get_elite_model()
 
     break_down_plan_chain = break_down_plan_prompt | break_down_plan_llm.with_structured_output(Plan)
 
@@ -140,6 +169,7 @@ def break_down_plan_step(state: PlanExecute):
     pprint("--------------------")
     refined_plan = break_down_plan_chain.invoke({"plan": state["plan"]}) # state["plan"]会填充提示词的{plan}
     state["plan"] = refined_plan.steps
+    print(f'break_down_plan_step为: {state["plan"]}')
     return state
 
 # ========================================================================================
@@ -157,9 +187,6 @@ def create_task_handler_chain():
     - use Tool A when you think the current task should search for information in the document library.
     Tool B: a tool that answers a question from a given context.
     - use Tool B ONLY when the current task can be answered by the aggregated context {aggregated_context}
-
-    you also receive the last tool used {last_tool}
-    if {last_tool} was retrieve_chunks, use other tools than Tool A.
 
     You also have the past steps {past_steps} that you can use to make decisions and understand the context of the task.
     You also have the initial user's question {question} that you can use to make decisions and understand the context of the task.
@@ -194,15 +221,15 @@ def run_task_handler_chain(state: PlanExecute):
        The updated state of the plan execution.
     """
     state["curr_state"] = "task_handler"
-    print("the current plans is:")
-    print(state["plan"])
+    print("the current plan is:")
+
     pprint("--------------------") 
 
     if not state['past_steps']:
         state["past_steps"] = []
 
     curr_task = state["plan"][0]
-
+    print("当前任务是:", curr_task)
     inputs = {"curr_task": curr_task,
                "aggregated_context": state["aggregated_context"],
                 "last_tool": state["tool"],
@@ -217,11 +244,13 @@ def run_task_handler_chain(state: PlanExecute):
     if output.tool == "retrieve_chunks":
         state["query_to_retrieve_or_answer"] = output.query
         state["tool"]="retrieve_chunks"
+        print("decided to use retrieve tool with query:", output.query)
        
     elif output.tool == "answer_from_context":
         state["query_to_retrieve_or_answer"] = output.query
         state["curr_context"] = output.curr_context
         state["tool"]="answer"
+        print("decided to use answer from context tool with question:", output.query)
 
 
 
@@ -256,28 +285,25 @@ def retrieve_or_answer(state: PlanExecute):
 
 def create_replanner_chain():
 
-    replanner_prompt_template =""" For the given objective, come up with a simple step by step plan of how to figure out the answer. 
-    This plan should involve individual tasks, that if executed correctly will yield the correct answer. Do not add any superfluous steps. 
-    The result of the final step should be the final answer. Make sure that each step has all the information needed - do not skip steps.
+    replanner_prompt_template =""" 你的核心目标是回答用户的问题：{question}
 
-    assume that the answer was not found yet and you need to update the plan accordingly, so the plan should never be empty.
+你已经执行了以下步骤：
+{past_steps}
 
-    Your objective was this:
-    {question}
+根据已经检索到的信息，你现在掌握了如下上下文：
+{aggregated_context}
 
-    Your original plan was this:
-    {plan}
+---
+现在，请你扮演决策者的角色，严格按照以下逻辑进行判断和规划：
 
-    You have currently done the follow steps:
-    {past_steps}
+1.  **首先判断**：基于当前的“聚合上下文”，是否已经包含了足够的信息来完整、准确地回答用户的“原始问题”？
 
-    You already have the following context:
-    {aggregated_context}
+2.  **然后规划**：
+    -   **如果信息足够**：那么你的新计划应该是唯一的、明确的“回答”步骤。请只输出一个步骤，例如：["根据已聚合的上下文，综合整理并生成最终答案。"]
+    -   **如果信息不足**：请分析还缺少哪些关键信息，并制定出下一步**简洁有效**的检索计划。**不要**猜测具体的表名（如表1、表2），而是应该围绕核心概念进行规划。例如：["检索关于面上资助评审标准的具体评分细则。"]
 
-    Update your plan accordingly. If further steps are needed, fill out the plan with only those steps.
-    Do not return previously done steps as part of the plan.
-
-    the format is json so escape quotes and new lines.
+你之前的计划是：{plan}
+请根据以上决策，更新你的计划。只输出下一步需要执行的步骤。
 
     """
 
@@ -287,7 +313,7 @@ def create_replanner_chain():
         # partial_variables={"format_instructions": act_possible_results_parser.get_format_instructions()},
     )
 
-    replanner_llm = get_chat_model()
+    replanner_llm = get_elite_model()
 
     replanner = replanner_prompt | replanner_llm.with_structured_output(Plan)
     return replanner
@@ -336,7 +362,7 @@ def run_qualitative_chunks_retrieval_workflow(state: PlanExecute):
     
     # 维持状态更新逻辑 1: 更新当前状态
     state["curr_state"] = "retrieve_and_rerank"
-    print("🚀 Running the integrated retrieval workflow (Retrieve -> Expand -> Rerank)...")
+
     
     question = state["query_to_retrieve_or_answer"]
     
@@ -344,10 +370,12 @@ def run_qualitative_chunks_retrieval_workflow(state: PlanExecute):
     
     # 步骤一：检索 (Retrieve)
     # 使用现有的混合检索器，它现在会在“子块”上进行检索
-    retriever = create_hybrid_retriever(bm25_k=20, vector_k=20) # 召回更多候选以供精排
-    print(f"1. 🔍 正在查询子块Retrieving child chunks for steps'query: '{question}'")
+    retriever = create_hybrid_retriever(bm25_k=6, vector_k=6, hybrid_weights=[0.7, 0.3]) # 召回更多候选以供精排
+    print("用户的原始问题:",state["question"])
+    print(f"1. 🔍 专门用于检索的query: '{question}'")
     child_chunks = retriever.invoke(question)
     print(f"   ✅ Retrieved {len(child_chunks)} child chunks.")
+    print(f"   🔍 检索到的子块内容: {[chunk.page_content for chunk in child_chunks]}")
 
     # 步骤二：扩展 (Expand)
     # 从子块的元数据中提取出父块，并去重
@@ -360,7 +388,8 @@ def run_qualitative_chunks_retrieval_workflow(state: PlanExecute):
             parent_chunks_map[parent_content] = Document(page_content=parent_content, metadata=chunk.metadata)
             
     unique_parent_chunks = list(parent_chunks_map.values())
-    print(f"2. 🧱 扩展:Expanding to {len(unique_parent_chunks)} unique parent chunks.")
+    print(f"检索到的父块内容: {[chunk.page_content for chunk in unique_parent_chunks]}")
+
 
     if not unique_parent_chunks:
         # 如果没有检索到任何内容，直接返回
@@ -373,10 +402,10 @@ def run_qualitative_chunks_retrieval_workflow(state: PlanExecute):
     
     # 步骤三：重排 (Rerank)
     # 使用新的 AiHubMixReranker 对父块进行重排序
-    print("3. ⚖️ 重排:Reranking parent chunks using AiHubMix Reranker...")
+
     
     # 1. 使用您的工厂函数实例化重排器，并设置返回 top 3 的文档
-    reranker = get_reranker_model(top_n=3) 
+    reranker = get_reranker_model(top_n=5) 
     
     # 2. 需要用transform_documents方法。
 
@@ -384,7 +413,8 @@ def run_qualitative_chunks_retrieval_workflow(state: PlanExecute):
         documents=unique_parent_chunks,
         query=question
     )
-    print(f"   ✅ Reranked and selected top {len(reranked_docs)} parent chunks.")
+    print(f"   ✅ Reranked and selected top {len(reranked_docs)} parent chunks via API.")
+    print(f"   重排后的父块内容: {[doc.page_content for doc in reranked_docs]}")
     
     # ====================================================================
 
